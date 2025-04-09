@@ -1,15 +1,4 @@
 
-"""
-PROBLEMS:
-    - The program creates a backcast and not just a nowcast
-
-FUTURE DEVELOPMENTS:
-    - Create Error measures
-    - Explore inconsistencies of the Bundesbank Data
-    - Visualize these errors, perform analytics
-    - Match with ifo and consensus data
-    - ...
-"""
 
 # --------------------------------------------------------------------------------------------------
 # ==================================================================================================
@@ -18,14 +7,27 @@ FUTURE DEVELOPMENTS:
 # Author:       Jan Ole Westphal
 # Date:         2025-04
 #
-# Description:  An evaluation model for the ifo economic forecast, pulling the latest Bundesbank 
-#               quaterly GDP releases and building naive forecasting models based on this data. For 
-#               every quaterly data-series, a new forecast model is estimated. Available models are 
-#               described in the Parameter setup section. 
-#               Puts out forecast time series into excel, designed for evaluating historic ifo 
-#               forecasts against more naive methods, which is done in a different piece of code.            
+# Description:  A program for creating simple GDP-growth forecasting, pulling the latest Bundesbank 
+#               quaterly GDP releases. For every quaterly released data-series, a new forecast model
+#               is estimated. Available models are described in the Parameter setup section. 
+#               Puts out forecasts and time series into excel, designed for evaluating historic ifo 
+#               forecasts against more naive methods, which is done in a different piece of code or
+#               added in future versions.            
 # ==================================================================================================
 # --------------------------------------------------------------------------------------------------
+
+
+#Version 1.0, 10.04.2025
+
+"""
+FUTURE DEVELOPMENTS:
+    - Create Error measures
+    - Visualize these errors, perform analytics
+    - Explore inconsistencies of the Bundesbank Source Data
+    - Match with ifo and consensus data
+    - ...
+"""
+
 
 
 
@@ -49,12 +51,12 @@ FUTURE DEVELOPMENTS:
 #                      ATTENTION: if False, local file must be named 'Bundesbank_GDP_raw.csv'
 #
 # model                Sets the forecast model used by the agent, options: 
-#                           - Auto-regressiv model of order AR_order with a constant: 'AR' 
+#                           - Auto-regressive model of order AR_order with a constant: 'AR' 
 #                           - Simple moving average: 'SMA'
-#                           - Very naive: just the previous quarter's average for all future 
+#                           - Naive average: just predict previous quarters' average for all future 
 #                             quarters: 'AVERAGE'
 # 
-# average_horizon      Sets the amount of previous quarters averaged over in 'SMA' and 'AVERAGE'
+# average_horizon      Sets the amount of previous quarters averaged over for 'SMA' and 'AVERAGE'
 # AR_horizon           Sets the time frame on which the AR- models are estimated in quarters. Set to 
 #                      a natural number n for looking backwards up to n quaters, set 'FULL' for use 
 #                      of full series
@@ -100,9 +102,10 @@ AR_horizon = 40
 forecast_horizon = 20
 
 #-------------#
-#  Note: If data is released at Quarter 2, only Q1 data is available. Accordingly, forecasting t 
-#        periods into the future requires t+1 forecasts, including the so-called nowcast. The above
-#        parameter ignores the nowcast, it is adjusted for below.
+#  Note: If data is released at Time T, data is available up to T-1. Accordingly, forecasting t 
+#        periods into the future requires t+1 forecasts, including the so-called nowcast for the 
+#        present. The above parameter does not count this nowcast and sets how many FUTURE periods, 
+#        are estimated. Setting forecast_horizon = t thus outputs t+1 prediction values.
 #-------------#
 
 
@@ -123,8 +126,8 @@ forecast_horizon = 20
 # ==================================================================================================
 
 # Include the nowcast
-forecast_horizon += 1
-# In all subsequent print or name calls, forecast_horizon must be reduced by one ...
+forecast_count = forecast_horizon + 1
+
 
 
 
@@ -141,8 +144,8 @@ if not (isinstance(average_horizon, int) and average_horizon >= 1 or average_hor
 if not (isinstance(AR_horizon, int) and AR_horizon >= 1 or AR_horizon == "FULL"):
     raise ValueError(f"AR_horizon ({AR_horizon}) must be ≥1 or 'FULL'")
 
-if not (isinstance(forecast_horizon, int) and forecast_horizon >= 1):
-    raise ValueError(f"forecast_horizon ({forecast_horizon}) must be ≥1")
+if not (isinstance(forecast_count, int) and forecast_count >= 1):
+    raise ValueError(f" There must be at least the nowcast conducted, ({forecast_horizon}) must be ≥0")
 
     
 # Model-specific validations
@@ -230,10 +233,10 @@ else:
 if resultfolder_name == 'Default':
 
     if model in ['AVERAGE', 'SMA']:
-        result_subfolder = f"Results_{model}_{average_horizon}_{forecast_horizon-1}"
+        result_subfolder = f"Results_{model}_{average_horizon}_{forecast_horizon}"
 
     elif model == 'AR':
-        result_subfolder = f"Results_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}"
+        result_subfolder = f"Results_{model}{AR_order}_{AR_horizon}_{forecast_horizon}"
 
     # Faulty model selection
     else:
@@ -444,7 +447,7 @@ def index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df):
 
     Notes:
         - Forecast dates are generated as end-of-quarter (QE) then adjusted back 45 days
-        - Requires global forecast_horizon variable to determine date range
+        - Requires global forecast_count variable to determine date range
         - Each record contains:
             * date_of_forecast: Model/run identifier (col)
             * target_date: Mid-quarter date being forecasted
@@ -455,7 +458,7 @@ def index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df):
 
     # Set correct index, adjust to middle of quarter
     last_quarter = data_index[-1]
-    forecast_index = pd.date_range(start=last_quarter, periods= forecast_horizon + 2, freq='QE')[2:]
+    forecast_index = pd.date_range(start=last_quarter, periods= forecast_count + 1, freq='QE')[2:]
     forecast_index -= pd.offsets.Day(45)
 
     # Append the forecast date, index and forecast data, merge to df
@@ -507,7 +510,7 @@ def AR_diagnostics(results):
 # Prepare the Estimation 
 # --------------------------------------------------------------------------------------------------
 
-# Create prediction dataframe: forecast_horizon x n_cols
+# Create prediction dataframe: forecast_count x n_cols
 qoq_forecast_df = pd.DataFrame()
 
 # Create an indexed dictionary of the predictions
@@ -530,7 +533,7 @@ if 'AR_summary' in globals():
 # Simple AR (with a constant) on previous growth rates within AR_horizon
 if model == 'AR':
 
-    print(f"""Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, predicting present and forecasting {forecast_horizon-1} quarters into the future ...""")
+    print(f"""Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, predicting present and forecasting {forecast_horizon} quarters into the future ...""")
 
     #Create the summary statistic df
     AR_summary = pd.DataFrame()
@@ -553,7 +556,7 @@ if model == 'AR':
         AR_summary = pd.concat([AR_summary, col_results.to_frame().T])
 
         # Create prediction df: qoq_forecast_df
-        forecast_qoq = results.predict(start=len(data) +1 , end=len(data) + forecast_horizon) 
+        forecast_qoq = results.predict(start=len(data) +1 , end=len(data) + forecast_count + 1) 
 
         # Save unindexed predictions
         qoq_forecast_df[col] = forecast_qoq
@@ -568,7 +571,7 @@ if model == 'AR':
 # Simple moving average of previous growth rates within the average_horizon
 elif model == 'SMA':
 
-    print(f"""Calculating forecasts as a simple moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ...""")
+    print(f"""Calculating forecasts as a simple moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon} quarters into the future ...""")
 
 
     # Iterate over all quarterly datapoints 
@@ -581,8 +584,8 @@ elif model == 'SMA':
         # List to collect forecasted values for this column
         forecast_qoq = []
         
-        # Create #forecast_horizon prediction elements elements
-        for _ in range(forecast_horizon):
+        # Create #forecast_count prediction elements elements
+        for _ in range(forecast_count):
             # Compute the average of the current data window: sma
             sma = data.mean()
 
@@ -606,7 +609,7 @@ elif model == 'SMA':
 # Static average of previous growth rates within the average_horizon
 elif model == 'AVERAGE':
 
-    print(f"""Calculating forecasts as the static average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ...""")
+    print(f"""Calculating forecasts as the static average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon} quarters into the future ...""")
     
     # Iterate over all quarterly datapoints 
     for col in df_qoq.columns:
@@ -617,7 +620,7 @@ elif model == 'AVERAGE':
         
         # Calculate the average, create forecast list
         average = data.mean()
-        forecast_qoq = pd.Series([average] * forecast_horizon)
+        forecast_qoq = pd.Series([average] * forecast_count)
 
 
         # Save unindexed predictions
@@ -836,30 +839,30 @@ qoq_forecast_index_df[col1_name] = qoq_forecast_index_df[col1_name].apply(
 if model in ['AVERAGE', 'SMA']:
 
     # Full Data qoq
-    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}_{average_horizon}_{forecast_horizon}.xlsx'
     df_combined_qoq.to_excel(os.path.join(folder_path, filename_df_combined_qoq))
 
     # Full Data yoy
-    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{average_horizon}_{forecast_horizon}.xlsx'
     df_combined_yoy.to_excel(os.path.join(folder_path, filename_df_combined_yoy)) 
 
     # Indexed Predictions df
-    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}_{average_horizon}_{forecast_horizon}.xlsx'
     qoq_forecast_index_df.to_excel(os.path.join(folder_path, filename_qoq_forecast_index_df)) 
 
 
 elif model == 'AR':
 
     # Full Data qoq
-    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon}.xlsx'
     df_combined_qoq.to_excel(os.path.join(folder_path, filename_df_combined_qoq))
 
     # Full Data yoy
-    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{AR_horizon}_{forecast_horizon}.xlsx'
     df_combined_yoy.to_excel(os.path.join(folder_path, filename_df_combined_yoy)) 
 
     # Indexed Predictions df
-    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon}.xlsx'
     qoq_forecast_index_df.to_excel(os.path.join(folder_path, filename_qoq_forecast_index_df)) 
 
 
