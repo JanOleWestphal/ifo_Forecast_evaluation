@@ -68,7 +68,7 @@ FUTURE DEVELOPMENTS:
 # Set wd as '/path/to/your/project' or r'\path\to\your\project'
 wd = r'C:\Users\janol\OneDrive\Desktop\ifo\Konjunkturprognose Evaluierung\Python Workfolder'
 
-# Customize Resultfolder names, e.g. 'AR2_results'
+# Customize Resultfolder names, e.g. 'AR2_results', suggested: 'Default'
 resultfolder_name = 'Default'   #set 'Default' for default: 'Results_model_memory_forecast'
 
 # Decide wether to use the API pull or a local version of the file; True (suggested) or False 
@@ -90,7 +90,7 @@ AR_order = 2
 average_horizon = 2
 
 # For AR model: set the memory of the agent (timeframe the model is estimated on); int or 'FULL'
-AR_horizon = 100
+AR_horizon = 40
 
 
 # Set how far the agent predicts into the future; int
