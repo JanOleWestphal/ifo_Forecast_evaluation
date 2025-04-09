@@ -87,14 +87,14 @@ AR_order = 2
 
 
 # For average-based models: set time frame over which the agent averages in quarters; int or 'FULL'
-average_horizon = 8
+average_horizon = 2
 
-# For AR model: set the memory of the agent, i.e. timeframe the model is estimated on; int or 'FULL'
+# For AR model: set the memory of the agent (timeframe the model is estimated on); int or 'FULL'
 AR_horizon = 100
 
 
-# Set how far the agent looks into the future; int
-forecast_horizon = 12
+# Set how far the agent predicts into the future; int
+forecast_horizon = 20
 
 
 
