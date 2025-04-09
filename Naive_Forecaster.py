@@ -1,4 +1,12 @@
 
+"""
+FUTURE DEVELOPMENTS:
+    - Create Error measures
+    - Explore inconsistencies of the Bundesbank Data
+    - Visualize these errors, perform analytics
+    - Match with ifo and consensus data
+    - ...
+"""
 
 # --------------------------------------------------------------------------------------------------
 # ==================================================================================================
@@ -29,8 +37,13 @@
 # PARAMETER Setup:
 #
 # wd                   Sets the current working directory
-# result_subfolder     Sets the folder name where results of a given run are printed, e.g. 'results'
+# resultfolder_name    Sets the folder name where results of a given run are printed, e.g. 'results',
+#                      Default naming: 'Results_model_memory-horizon_forecast'
 #                      OVERRIDES WITH EVERY RUN!
+#                       
+# api_pull             Determines whether the data is automatically pulled form the Bundesbank API 
+#                      (set = True) or whether a local version is used (set = False). 
+#                      ATTENTION: if False, local file must be named 'Bundesbank_GDP_raw.csv'
 #
 # model                Sets the forecast model used by the agent, options: 
 #                           - Auto-regressiv model of order AR_order with a constant: 'AR' 
@@ -49,14 +62,18 @@
 
 
 # --------------------------------------------------------------------------------------------------
-# Folders
+# Folders and Data
 # --------------------------------------------------------------------------------------------------
 
 # Set wd as '/path/to/your/project' or r'\path\to\your\project'
 wd = r'C:\Users\janol\OneDrive\Desktop\ifo\Konjunkturprognose Evaluierung\Python Workfolder'
 
-# Name Resultfolder, e.g. 'AR2_results'
-result_subfolder = 'Results'
+# Customize Resultfolder names, e.g. 'AR2_results'
+resultfolder_name = 'Default'   #set 'Default' for default: 'Results_model_memory_forecast'
+
+# Decide wether to use the API pull or a local version of the file; True (suggested) or False 
+api_pull = True
+
 
 # --------------------------------------------------------------------------------------------------
 # Define the model
@@ -65,16 +82,18 @@ result_subfolder = 'Results'
 # Set the agent's forecasting method; options: 'AR', 'AVERAGE', 'SMA'
 model = 'AR'
 
-# For average-based models: set time frame over which the agent averages in quarters
-average_horizon = 8
-
-# For AR model: set number of lags (sugested: 2)
+# For AR model: set number of lags (sugested: 2); int
 AR_order = 2
 
-# For AR model: set the memory of the agent, i.e. the timeframe the model is estimated on
+
+# For average-based models: set time frame over which the agent averages in quarters; int or 'FULL'
+average_horizon = 8
+
+# For AR model: set the memory of the agent, i.e. timeframe the model is estimated on; int or 'FULL'
 AR_horizon = 100
 
-# Set how far the agent looks into the future
+
+# Set how far the agent looks into the future; int
 forecast_horizon = 12
 
 
@@ -101,13 +120,17 @@ valid_models = {'AR', 'AVERAGE', 'SMA'}
 if model not in valid_models:
     raise ValueError(f"Invalid model '{model}'. Must be one of: {valid_models}")
     
-# Validate all horizons are ≥1 (except AR_order which can be 0)
-if average_horizon < 1:
-    raise ValueError(f"average_horizon ({average_horizon}) must be ≥1")
-if AR_horizon < 1:
-    raise ValueError(f"AR_horizon ({AR_horizon}) must be ≥1")
-if forecast_horizon < 1:
+
+# Validate all horizons are ≥1 or 'FULL'
+if not (isinstance(average_horizon, int) and average_horizon >= 1 or average_horizon == "FULL"):
+    raise ValueError(f"average_horizon ({average_horizon}) must be ≥1 or 'FULL'")
+
+if not (isinstance(AR_horizon, int) and AR_horizon >= 1 or AR_horizon == "FULL"):
+    raise ValueError(f"AR_horizon ({AR_horizon}) must be ≥1 or 'FULL'")
+
+if not (isinstance(forecast_horizon, int) and forecast_horizon >= 1):
     raise ValueError(f"forecast_horizon ({forecast_horizon}) must be ≥1")
+
     
 # Model-specific validations
 if model in ('AR'):
@@ -136,13 +159,14 @@ import importlib
 import subprocess
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, date
 
 # Check for libraries
 required_packages = [
     'requests',
     'openpyxl',
     'pandas',
+    #'pandasgui',
     'numpy',
     'statsmodels',
     'matplotlib',
@@ -160,6 +184,7 @@ for pkg in required_packages:
 # Import libraries
 import requests
 import pandas as pd
+#from pandasgui import show  #uncomment this to allow for easier debugging
 import numpy as np
 from statsmodels.tsa.ar_model import AutoReg
 import matplotlib.pyplot as plt
@@ -168,6 +193,7 @@ import seaborn as sns
 # Set display options
 pd.set_option('display.max_columns', None)
 sns.set_theme(style='whitegrid')
+
 
 
 
@@ -180,16 +206,34 @@ if wd:
     try:
         os.makedirs(wd, exist_ok=True)
         os.chdir(wd)
-        print(f"Working directory set to: {wd} ...")
+        print(f" \nWorking directory set to: {wd} ... \n")
     except FileNotFoundError:
-        print(f"Directory not found: {wd}")
+        print(f"Directory not found: {wd} \n")
 else:
     print("No working directory set.")
 
 
 
-# Create or clean the results folder
-# Set path
+#Define the result_subfolder
+
+if resultfolder_name == 'Default':
+
+    if model in ['AVERAGE', 'SMA']:
+        result_subfolder = f"Results_{model}_{average_horizon}_{forecast_horizon}"
+
+    elif model == 'AR':
+        result_subfolder = f"Results_{model}{AR_order}_{AR_horizon}_{forecast_horizon}"
+
+    # Faulty model selection
+    else:
+        print("ERROR: wrong naming of outputs, check SAVE RESULTS section")
+
+else:
+    result_subfolder = resultfolder_name
+
+
+
+# Define Resultfolder path
 folder_path = os.path.join(wd, result_subfolder)
 
 # Create the folder if it doesn't exist
@@ -212,27 +256,40 @@ for file in os.listdir(folder_path):
 # ==================================================================================================
 
 # --------------------------------------------------------------------------------------------------
-# Import Data via Bundesbank API
+# Import Data via Bundesbank API or locally
 # --------------------------------------------------------------------------------------------------
-
-# Bundesbank API link
-url = 'https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AG1.CA010.A.I?format=csv&lang=de'
 
 # Output filename
 filename = 'Bundesbank_GDP_raw.csv'
 filepath = os.path.join(wd, filename)
 
-# Download and save the CSV file
-response = requests.get(url)
-if response.status_code == 200:
-    with open(filepath, 'wb') as f:
-        f.write(response.content)
-    print(f"Bundesbank data downloaded and saved to: {filepath} ...")
+# Optional API-pull:
+if api_pull == True:
+    # Bundesbank API link
+    url = 'https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AG1.CA010.A.I?format=csv&lang=de'
+
+    # Download and save the CSV file
+    response = requests.get(url)
+    if response.status_code == 200:
+        with open(filepath, 'wb') as f:
+            f.write(response.content)
+        print(f"Bundesbank data downloaded and saved to: {filepath} ... \n ")
+    else:
+        raise FileNotFoundError(f"""Failed to download file. 
+                                Library: requests,  Status code: {response.status_code}.
+                                Try again or use local version of the file (api_pull = False)""")
+
+elif api_pull == False:
+    print('Attention: local version of the data is being used, set api_pull = True for real-time data \n')
+
 else:
-    print(f"Failed to download file. Library: requests,  Status code: {response.status_code} ...")
+    raise ValueError('ERROR: api_pull must be set to either True or False')
 
 
+
+# --------------------------------------------------------------------------------------------------
 # Reformat into a usable dataframe
+# --------------------------------------------------------------------------------------------------
 
 # Load first line to get headers
 with open(filename, encoding="utf-8") as f:
@@ -257,7 +314,7 @@ df.columns = pd.to_datetime(df.columns, format='%d.%m.%Y', errors='raise')
 # Inspect
 #print(df.head())
 
-print("Raw Data loaded ...")
+print("Raw Data loaded ... \n")
 
 
 # --------------------------------------------------------------------------------------------------
@@ -274,7 +331,7 @@ df.index = pd.PeriodIndex(df.index, freq='Q').to_timestamp()
 
 # Add ~45 days to shift to the middle of each quarter
 df.index += pd.offsets.Day(45)
-print("Index set to datetime and middle of the quarter ...")
+#print("Index set to datetime and middle of the quarter ...")
 
 # Drop columns not in Feb, May, Aug, Nov
 months_to_keep = [2, 5, 8, 11]  
@@ -282,6 +339,7 @@ df = df.loc[:, df.columns.month.isin(months_to_keep)]
 
 # Inspect
 #print(df.head())
+
 
 
 # --------------------------------------------------------------------------------------------------
@@ -295,6 +353,7 @@ df_qoq = ((df.shift(-1) - df) / df) *100
 # Inspect
 # print(df_qoq.head())
 
+print("Data cleaned ... \n")
 
 
 
@@ -303,11 +362,13 @@ df_qoq = ((df.shift(-1) - df) / df) *100
 # MODEL ESTIMATION
 # ==================================================================================================
 
+
 # --------------------------------------------------------------------------------------------------
 #  Define necessary functionalities
 # --------------------------------------------------------------------------------------------------
 
 # Create a function which selects the correct series as inputs in every column iteration: select_col
+
 def select_col(col, horizon):
 
     """
@@ -324,15 +385,21 @@ def select_col(col, horizon):
                        AR_horizon or average_horizon
 
     Returns:
-        pd.Series: A pandas Series containing the selected data for the specified column 
-        and horizon.
+        tuple: Contains two elements:
+            - data (np.ndarray): Array of selected values
+            - data_index (pd.Index): Corresponding datetime indices
+
+    Notes:
+        - The function always returns numpy arrays (not pd.Series) for model compatibility
+        - Returned indices maintain alignment with the selected values
+        - For horizons exceeding available data, returns all available observations
     """
 
     # Select the non-null part of each column: series
     series = df_qoq[col].dropna()
 
     # Select the model scope
-    if len(series) < horizon:
+    if len(series) < horizon or horizon == 'FULL':
         data_index = series.index
         data = series.values
     else:
@@ -342,51 +409,85 @@ def select_col(col, horizon):
     return data, data_index
 
 
-# Create a function appending forecasts with correct indexing: index_append(data, forecast_qoq)
-def index_append(data, data_index, forecast_qoq, df_qoq_forecast):
+
+# Create a function building an indexed dictionary of forecasts
+
+def index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df):
 
     """
-    Appends forecasted values to the original data with correct future quarterly indexing.
+    Creates and appends forecast records to a results DataFrame with proper quarterly indexing.
 
-    This function generates future quarterly timestamps starting from the last available quarter in 
-    the historical data, and appends the corresponding forecasted values to the `df_qoq_forecast` 
-    DataFrame. The new values are indexed based on the forecast horizon, ensuring that the quarterly 
-    frequency is maintained.
+    This function constructs forecast records by:
+    1. Generating future quarterly dates adjusted to mid-quarter
+    2. Combining forecast values with metadata
+    3. Appending results to a growing collection DataFrame
 
     Args:
-        data (pd.Series or np.ndarray): Historical values (used for type consistency).
-        data_index (pd.DatetimeIndex): Time indices of the historical data.
-        forecast_qoq (list or np.ndarray): Forecasted values to append, lengths must match.
-        df_qoq_forecast (pd.DataFrame): Existing DataFrame to which forecasted values are appended.
+        col: Identifier for the forecast series (typically column name)
+        data_index (pd.DatetimeIndex): Output of select_col, index of selected cols
+        forecast_qoq (np.ndarray): Array of forecasted quarterly growth values
+        qoq_forecast_index_df (pd.DataFrame): Accumulating DataFrame of all forecasts
 
     Returns:
-        pd.DataFrame: Updated `df_qoq_forecast` with new forecasts appended. The new entries are 
-        indexed by future quarters starting from the last historical date.
+        pd.DataFrame: Updated version of qoq_forecast_index_df with new records appended
 
-    Note:
-        - The function requires the `forecast_horizon` (int) to be defined elsewhere.
-        - The quarterly index is generated using 'QE', and set to mid-quarter
-        - This function modifies the passed `df_qoq_forecast` globally.
+    Notes:
+        - Forecast dates are generated as end-of-quarter (QE) then adjusted back 45 days
+        - Requires global forecast_horizon variable to determine date range
+        - Each record contains:
+            * date_of_forecast: Model/run identifier (col)
+            * target_date: Mid-quarter date being forecasted
+            * predicted_qoq: Forecasted quarterly growth value
+        - Maintains immutable operations (returns new DataFrame rather than modifying in-place)
     """
 
 
     # Set correct index, adjust to middle of quarter
     last_quarter = data_index[-1]
-    forecast_index = pd.date_range(start=last_quarter, periods=forecast_horizon + 1, freq='QE')[1:]
+    forecast_index = pd.date_range(start=last_quarter, periods= forecast_horizon + 1, freq='QE')[1:]
     forecast_index -= pd.offsets.Day(45)
 
+    # Append the forecast date, index and forecast data, merge to df
+    forecast_df = pd.DataFrame({
+        'date_of_forecast': col,
+        'target_date': forecast_index,
+        'predicted_qoq': forecast_qoq
+    })    
 
-    # Create indexed DataFrame
-    df_qoq_forecast_new = pd.DataFrame(forecast_qoq, index=forecast_index, columns=[col])
+    # Save to result df
+    if qoq_forecast_index_df.empty:
+        qoq_forecast_index_df = forecast_df.copy()
+    else:
+        qoq_forecast_index_df = pd.concat([qoq_forecast_index_df, forecast_df], ignore_index=True)
 
-    # Append the forecasted values to df_qoq_forecast
-    df_qoq_forecast = pd.concat([df_qoq_forecast, df_qoq_forecast_new])
-
-    return df_qoq_forecast
-
-
+    return qoq_forecast_index_df
 
 
+
+# Create a function which selects the AR results and puts them into a df: AR_summary()
+
+def AR_diagnostics(results):
+
+    diagnostics = {}
+    
+    # Intercept (always at index 0)
+    diagnostics['Intercept']        = results.params[0]
+    diagnostics['p_Intercept']      = results.pvalues[0]
+    diagnostics['stderr_Intercept'] = results.bse[0]
+    diagnostics['t_Intercept']      = results.tvalues[0]
+    
+    # Iterate over the lags based on AR_order
+    for i in range(1, AR_order + 1):
+        diagnostics[f'Lag_{i}']        = results.params[i]
+        diagnostics[f'p_Lag_{i}']      = results.pvalues[i]
+        diagnostics[f'stderr_Lag_{i}'] = results.bse[i]
+        diagnostics[f't_Lag_{i}']      = results.tvalues[i]
+    
+    # Add model level statistics
+    diagnostics['AIC'] = results.aic
+    diagnostics['BIC'] = results.bic
+
+    return pd.Series(diagnostics, name=col)
 
 
 
@@ -395,8 +496,12 @@ def index_append(data, data_index, forecast_qoq, df_qoq_forecast):
 # Prepare the Estimation 
 # --------------------------------------------------------------------------------------------------
 
-# Create result tables
-df_qoq_forecast = pd.DataFrame()
+# Create prediction dataframe: forecast_horizon x n_cols
+qoq_forecast_df = pd.DataFrame()
+
+# Create an indexed dictionary of the predictions
+qoq_forecast_index_df = pd.DataFrame(columns=['date_of_forecast', 'target_date', 'predicted_qoq'])
+
 
 # Clear workspace, if needed: 
 if 'AR_summary' in globals():
@@ -407,17 +512,18 @@ if 'AR_summary' in globals():
 
 # --------------------------------------------------------------------------------------------------
 # If-else Filter to choose the correct model: 
-#     filter the series, calculate forecasts, append to df_qoq_forecast with correct index
+#     filter the series, calculate forecasts, append to qoq_forecast_df with correct index
 # --------------------------------------------------------------------------------------------------
 
 # Simple AR (with a constant) on previous growth rates within AR_horizon
 if model == 'AR':
 
-    print(f"""Calculating an {model}{AR_order} model on the last {AR_horizon} quarters,
-    forecasting {forecast_horizon} quarters into the future ...""")
+    print(f"""Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, forecasting {forecast_horizon} quarters into the future ...""")
 
-    # Create df for evaluation statistics: AR_summary
-    AR_summary = pd.DataFrame() 
+    #Create the summary statistic df
+    AR_summary = pd.DataFrame()
+    AR_summary.index.name = 'prediction_date'
+
 
     # Iterate over all quarterly datapoints 
     for col in df_qoq.columns:
@@ -430,15 +536,22 @@ if model == 'AR':
         forecaster = AutoReg(data, lags=AR_order)
         results = forecaster.fit()
 
-        # Save diagnostic statistics to AR_summary
-        param_series = pd.Series(results.params, name=col) 
-        AR_summary = pd.concat([AR_summary, param_series.to_frame().T])
+        # Save model diagnostics to df:
+        col_results = AR_diagnostics(results)
+        AR_summary = pd.concat([AR_summary, col_results.to_frame().T])
 
-
-        # Create prediction df: df_qoq_forecast
+        # Create prediction df: qoq_forecast_df
         forecast_qoq = results.predict(start=len(data) +1 , end=len(data) + forecast_horizon) 
 
-        df_qoq_forecast = index_append(data, data_index, forecast_qoq, df_qoq_forecast)
+        # Save unindexed predictions
+        qoq_forecast_df[col] = forecast_qoq
+
+        # Save indexed predictions: qoq_forecast_index_df
+        qoq_forecast_index_df = index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df)
+
+
+
+
 
 
 
@@ -446,8 +559,7 @@ if model == 'AR':
 # Simple moving average of previous growth rates within the average_horizon
 elif model == 'SMA':
 
-    print(f"""Calculating forecasts as a simple moving average of the past {average_horizon} quarters
-    forecasting {forecast_horizon} quarters into the future ...""")
+    print(f"""Calculating forecasts as a simple moving average of the past {average_horizon} quarters, forecasting {forecast_horizon} quarters into the future ...""")
 
 
     # Iterate over all quarterly datapoints 
@@ -464,15 +576,20 @@ elif model == 'SMA':
         for _ in range(forecast_horizon):
             # Compute the average of the current data window: sma
             sma = data.mean()
+
             # Build forecast list, save results
             forecast_qoq.append(sma)
-            # Shift data window
+
+            # Shift data window for the next step
             data = np.append(data, sma)
             data = data[1:]
 
         
-        # Create prediction df: df_qoq_forecast
-        df_qoq_forecast = index_append(data, data_index, forecast_qoq, df_qoq_forecast)
+        # Save unindexed predictions
+        qoq_forecast_df[col] = forecast_qoq
+
+        # Save indexed predictions: qoq_forecast_index_df
+        qoq_forecast_index_df = index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df)
 
 
 
@@ -480,8 +597,7 @@ elif model == 'SMA':
 # Static average of previous growth rates within the average_horizon
 elif model == 'AVERAGE':
 
-    print(f"""Calculating forecasts as the static average of the past {average_horizon} quaters
-    forecasting {forecast_horizon} quarters into the future ...""")
+    print(f"""Calculating forecasts as the static average of the past {average_horizon} quarters, forecasting {forecast_horizon} quarters into the future ...""")
     
     # Iterate over all quarterly datapoints 
     for col in df_qoq.columns:
@@ -495,110 +611,240 @@ elif model == 'AVERAGE':
         forecast_qoq = pd.Series([average] * forecast_horizon)
 
 
-        # Create prediction df: df_qoq_forecast
-        df_qoq_forecast = index_append(data, data_index, forecast_qoq, df_qoq_forecast)
+        # Save unindexed predictions
+        qoq_forecast_df[col] = forecast_qoq
+
+        # Save indexed predictions: qoq_forecast_index_df
+        qoq_forecast_index_df = index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df)
 
 
 
 
 # --------------------------------------------------------------------------------------------------
-#  If further options are required, put them here. Make sure to update the descriptions under 
-#  Parameter Setup and the parameter validation check under valid_models = {} accordingly
+#  If further options are required, put them here. 
+#
+#  Make sure to update the descriptions under Parameter Setup, the if-clauses under SAVE RESULTS 
+#  and under "#Define the model subfolder", and the parameter validation check under valid_models
+#  accordingly
 # --------------------------------------------------------------------------------------------------
+
 
 # Error message
 else:
-    print("This should never be printed, check wether valid_models is still up to date")
+    print("This should never be printed, check whether valid_models is still up to date")
 
 
-
-
-
-# ---------------------------
-# Diagnostics
-# ---------------------------
-
-
-print(df_qoq_forecast.head())
 
 
 
 
 
 # ==================================================================================================
-# PROCESS ESTIMATION RESULTS
+# PROCESS THE ESTIMATION RESULTS
 # ==================================================================================================
 
-# Combine realised data with forecast data
-df_qoq_combined = df_qoq.combine_first(df_qoq_forecast)
-
-# Create yearly forecasts on combined data: df_yoy_combined
-#df_qoq_factor_combined = df + 1
-
-# Group by year and multiply values for each year
-# df_yoy_combined = df_qoq_factor_combined.resample('YE').prod() #NaN if any quarter is missing
-df_yoy_combined = df_qoq_combined.resample('YE').prod() #NaN if any quarter is missing
 
 # --------------------------------------------------------------------------------------------------
-#  Reset indices to YYYY-Qx and and set column names to YYYY_0q; q in 1,2,3,4
+#  Build combined observed-forecasted dataframe
 # --------------------------------------------------------------------------------------------------
 
-# Function: Rename column headers
-def rename_column(date_str):
-    day, month, year = map(int, date_str.split('.'))
-    # Determine the quarter
-    quarter = ((month - 1) // 3) + 1
-    # Rename to the required format
-    return f"{year}_0{quarter}"
+# Store realized-predicted series in list:
+series_list = []
 
-# Apply to output dataframes
-# df.columns = df.columns.map(rename_column)
+# Loop through paired columns from df_qoq and qoq_forecast_df
+for col_real, col_forecast in zip(df_qoq.columns, qoq_forecast_df.columns):
+
+    # Select observed values to array
+    real_values = df_qoq[col_real].dropna().to_numpy()
+
+    # Get forecasts as array.
+    forecast_values = qoq_forecast_df[col_forecast].to_numpy()
+
+    # Concatenate real and forecast data.
+    combined = np.concatenate([real_values, forecast_values])
+
+    # Convert the combined array into a Series.
+    s = pd.Series(combined, name=col_real)
+
+    # Append the Series to the list.
+    series_list.append(s)
+
+# Concatenate all Series along the column axis.
+df_combined_qoq = pd.concat(series_list, axis=1)
 
 
 
-# Function: rename indices
+
+# --------------------------------------------------------------------------------------------------
+#  Create yearly values
+# --------------------------------------------------------------------------------------------------
+
+# Get growth factors (1+g), correct scale
+df_combined_factor = 1 + (df_qoq/100)
+
+#show(df_combined_factor)
+
+# Group by year and get yearly growth: (1+g_q1)*(1+g_q2)*(1+ g_q3)*(1+ g_q4), automatic NaN
+df_combined_yoy = df_combined_factor.resample('YE').apply(lambda x: x.prod(skipna=False))
 
 
-#Apply to output dataframes
+
+
+# We now have 4 relevant dataframes: qoq_forecast_index_df, df_combined_qoq, df_combined_yoy, AR_summary
+
+# --------------------------------------------------------------------------------------------------
+#  Reset indices and column names; Set Dates to Excel-friendly format
+#
+#  Renaming: -> indices back to YYYY-Qx format
+#            -> colnames to qoq_YYYY_0x and yoy_YYYY_0x
+#            -> prediction col names to qoq_YYYY_0x_f
+#            -> qoq_forecast_index_df: first col to YYYY_0x, second to YYYY_Qx
+#
+# --------------------------------------------------------------------------------------------------
+
+
+# -------------------------------------------#
+#         Define renaming functions          #  
+# -------------------------------------------#
+
+
+# Rename indices to YYYY-Qx
+def index_renamer(df):
+    """
+    Renames a DataFrame's datetime index to 'YYYY-Qx' format, where x is the quarter number (1 to 4).
+
+    Args:
+        df (pd.DataFrame): Input DataFrame with a DatetimeIndex.
+
+    Returns:
+        pd.DataFrame: DataFrame with renamed index.
+    """
+    df = df.copy()
+    df.index = pd.to_datetime(df.index) 
+    df.index = [f"{idx.year}-Q{(idx.month - 1)//3 + 1}" for idx in df.index]
+    return df
+
+
+# Rename cols to prefix_YYYY_0x
+def col_renamer(prefix, df):
+    """
+    Renames datetime-like column names of a DataFrame to 'prefix_YYYY_0x' format,
+    where x is the quarter number (1 to 4).
+
+    Args:
+        prefix (str): Prefix to prepend to the new column names.
+        df (pd.DataFrame): Input DataFrame with datetime-like column names.
+
+    Returns:
+        pd.DataFrame: DataFrame with renamed columns.
+    """
+    df = df.copy()
+    df.columns = [
+        f"{prefix}_{col.year}_0{((col.month - 1) // 3 + 1)}"
+        if isinstance(col, (pd.Timestamp, datetime)) else col
+        for col in df.columns
+    ]
+    return df
+
+
+
+
+
+
+# -------------------------------------------#
+#  Apply functions: Rename index and column  #
+#--------------------------------------------#
+
+# index and cols: df_combined_qoq, df_combined_yoy
+df_combined_qoq = index_renamer(df_combined_qoq)
+df_combined_qoq = col_renamer('qoq', df_combined_qoq)
+
+df_combined_yoy = index_renamer(df_combined_yoy)
+df_combined_yoy = col_renamer('yoy', df_combined_yoy)
+
+# index only: AR_summary
+if 'AR_summary' in globals():
+    AR_summary = index_renamer(AR_summary)
+
+
+
+# Manually rescale the values of qoq_forecast_index_df to strings
+
+# Pre-formating to datetime:
+qoq_forecast_index_df.iloc[:, 0] = pd.to_datetime(qoq_forecast_index_df.iloc[:, 0])
+qoq_forecast_index_df.iloc[:, 1] = pd.to_datetime(qoq_forecast_index_df.iloc[:, 1])
+
+# Reformat data using flexible code for col names:
+col0_name = qoq_forecast_index_df.columns[0]
+col1_name = qoq_forecast_index_df.columns[1]
+
+# First col to YYYY_0x
+qoq_forecast_index_df[col0_name] = qoq_forecast_index_df[col0_name].apply(
+    lambda x: f"{x.year}_0{((x.month - 1) // 3 + 1)}"
+)
+
+# Second col to YYYY_Qx
+qoq_forecast_index_df[col1_name] = qoq_forecast_index_df[col1_name].apply(
+    lambda x: f"{x.year}_Q{((x.month - 1) // 3 + 1)}"
+)
+
 
 
 
 
 
 # ==================================================================================================
-# SAVE RESULTS AS EXCEL
+# SAVE RESULTS AS EXCEL: df_combined_qoq, df_combined_yoy,  qoq_forecast_index_df
 # ==================================================================================================
 
-# ---------------------------
-# QUARTERLY
-# ---------------------------
+# If clause for better naming of results
+if model in ['AVERAGE', 'SMA']:
 
-# Save the quarterly growth forecast table of df_qoq_forecast 
-filename_qoq_forecast = f'Naive_QoQ_forecasts_{model}.xlsx'
-df_qoq_forecast.to_excel(os.path.join(folder_path, filename_qoq_forecast))
+    # Full Data qoq
+    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}_{average_horizon}_{forecast_horizon}.xlsx'
+    df_combined_qoq.to_excel(os.path.join(folder_path, filename_df_combined_qoq))
 
-# Save the extended quarterly growth tables (realized + forecasted) of df_qoq_combined
-filename_qoq_combined = f'Realized_and_forecasted_QoQ_{model}.xlsx'
-df_qoq_combined.to_excel(os.path.join(folder_path, filename_qoq_combined))
+    # Full Data yoy
+    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{average_horizon}_{forecast_horizon}.xlsx'
+    df_combined_yoy.to_excel(os.path.join(folder_path, filename_df_combined_yoy)) 
+
+    # Indexed Predictions df
+    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}_{average_horizon}_{forecast_horizon}.xlsx'
+    qoq_forecast_index_df.to_excel(os.path.join(folder_path, filename_qoq_forecast_index_df)) 
 
 
-# ---------------------------
-# YEARLY
-# ---------------------------
+elif model == 'AR':
 
-# Save the extended yearly growth tables (realized + forecasted): 
-filename_yoy = f'Realized_and_forecasted_YoY_{model}.xlsx'
-df_yoy_combined.to_excel(os.path.join(folder_path, filename_yoy))
+    # Full Data qoq
+    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon}.xlsx'
+    df_combined_qoq.to_excel(os.path.join(folder_path, filename_df_combined_qoq))
+
+    # Full Data yoy
+    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{AR_horizon}_{forecast_horizon}.xlsx'
+    df_combined_yoy.to_excel(os.path.join(folder_path, filename_df_combined_yoy)) 
+
+    # Indexed Predictions df
+    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon}.xlsx'
+    qoq_forecast_index_df.to_excel(os.path.join(folder_path, filename_qoq_forecast_index_df)) 
+
+
+# Faulty model selection
+else:
+    print("ERROR: wrong naming of outputs, check SAVE RESULTS section")
 
 
 """
-Could also calculate and save absolute values ...
+Could also calculate and save absolute values, if needed ...
 """
 
+
+# ----------------------------------------#
+#    Save Model Summary if Model is AR    #
+# ----------------------------------------#
 
 # Check wether there is an AR_summary, save if yes
 if 'AR_summary' in globals():
-    filename_AR_summary = 'AR_model_summary_statistics.xlsx'
+    filename_AR_summary = f'AR{AR_order}_{AR_horizon}_model_statistics.xlsx'
     AR_summary.to_excel(os.path.join(folder_path, filename_AR_summary))
 
 
@@ -608,8 +854,9 @@ if 'AR_summary' in globals():
 
 
 # --------------------------------------------------------------------------------------------------
-print(f" \n Program executed, find results in Subfolder {result_subfolder} of working directory {wd}")
+print(f" \n \nProgram complete, results are in Subfolder {result_subfolder} of working directory {wd} \n")
 # --------------------------------------------------------------------------------------------------
+
 
 
 # --------------------------------------------------------------------------------------------------
@@ -643,3 +890,33 @@ print(f" \n Program executed, find results in Subfolder {result_subfolder} of wo
 
 #
 # vis_years            Put in a list of years for which the results are visualized, default None
+
+
+
+
+
+
+# ==================================================================================================
+# Archive
+# ==================================================================================================
+
+# Add a sufix to col names, e.g. f
+def sufix_adder(sufix, df):
+    """
+    Appends a suffix to all column names of the DataFrame.
+
+    Args:
+        sufix (str): The suffix to append to each column name.
+        df (pd.DataFrame): Input DataFrame.
+
+    Returns:
+        pd.DataFrame: DataFrame with updated column names.
+    """
+    df = df.copy()
+    df.columns = [f"{col}_{sufix}" for col in df.columns]
+    return df
+
+
+
+
+
