@@ -126,7 +126,7 @@ forecast_horizon = 20
 # ==================================================================================================
 
 # Include the nowcast
-forecast_count = forecast_horizon + 1
+forecast_horizon += 1
 
 
 
@@ -144,8 +144,8 @@ if not (isinstance(average_horizon, int) and average_horizon >= 1 or average_hor
 if not (isinstance(AR_horizon, int) and AR_horizon >= 1 or AR_horizon == "FULL"):
     raise ValueError(f"AR_horizon ({AR_horizon}) must be ≥1 or 'FULL'")
 
-if not (isinstance(forecast_count, int) and forecast_count >= 1):
-    raise ValueError(f" There must be at least the nowcast conducted, ({forecast_horizon}) must be ≥0")
+if not (isinstance(forecast_horizon, int) and forecast_horizon >= 1):
+    raise ValueError(f"forecast_horizon ({forecast_horizon}) must be ≥1")
 
     
 # Model-specific validations
@@ -233,10 +233,10 @@ else:
 if resultfolder_name == 'Default':
 
     if model in ['AVERAGE', 'SMA']:
-        result_subfolder = f"Results_{model}_{average_horizon}_{forecast_horizon}"
+        result_subfolder = f"Results_{model}_{average_horizon}_{forecast_horizon-1}"
 
     elif model == 'AR':
-        result_subfolder = f"Results_{model}{AR_order}_{AR_horizon}_{forecast_horizon}"
+        result_subfolder = f"Results_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}"
 
     # Faulty model selection
     else:
@@ -447,7 +447,7 @@ def index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df):
 
     Notes:
         - Forecast dates are generated as end-of-quarter (QE) then adjusted back 45 days
-        - Requires global forecast_count variable to determine date range
+        - Requires global forecast_horizon variable to determine date range
         - Each record contains:
             * date_of_forecast: Model/run identifier (col)
             * target_date: Mid-quarter date being forecasted
@@ -458,7 +458,7 @@ def index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df):
 
     # Set correct index, adjust to middle of quarter
     last_quarter = data_index[-1]
-    forecast_index = pd.date_range(start=last_quarter, periods= forecast_count + 1, freq='QE')[2:]
+    forecast_index = pd.date_range(start=last_quarter, periods= forecast_horizon + 2, freq='QE')[2:]
     forecast_index -= pd.offsets.Day(45)
 
     # Append the forecast date, index and forecast data, merge to df
@@ -510,7 +510,7 @@ def AR_diagnostics(results):
 # Prepare the Estimation 
 # --------------------------------------------------------------------------------------------------
 
-# Create prediction dataframe: forecast_count x n_cols
+# Create prediction dataframe: forecast_horizon x n_cols
 qoq_forecast_df = pd.DataFrame()
 
 # Create an indexed dictionary of the predictions
@@ -533,7 +533,7 @@ if 'AR_summary' in globals():
 # Simple AR (with a constant) on previous growth rates within AR_horizon
 if model == 'AR':
 
-    print(f"""Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, predicting present and forecasting {forecast_horizon} quarters into the future ...""")
+    print(f"""Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, predicting present and forecasting {forecast_horizon-1} quarters into the future ...""")
 
     #Create the summary statistic df
     AR_summary = pd.DataFrame()
@@ -556,7 +556,7 @@ if model == 'AR':
         AR_summary = pd.concat([AR_summary, col_results.to_frame().T])
 
         # Create prediction df: qoq_forecast_df
-        forecast_qoq = results.predict(start=len(data) +1 , end=len(data) + forecast_count + 1) 
+        forecast_qoq = results.predict(start=len(data) +1 , end=len(data) + forecast_horizon) 
 
         # Save unindexed predictions
         qoq_forecast_df[col] = forecast_qoq
@@ -571,7 +571,7 @@ if model == 'AR':
 # Simple moving average of previous growth rates within the average_horizon
 elif model == 'SMA':
 
-    print(f"""Calculating forecasts as a simple moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon} quarters into the future ...""")
+    print(f"""Calculating forecasts as a simple moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ...""")
 
 
     # Iterate over all quarterly datapoints 
@@ -584,8 +584,8 @@ elif model == 'SMA':
         # List to collect forecasted values for this column
         forecast_qoq = []
         
-        # Create #forecast_count prediction elements elements
-        for _ in range(forecast_count):
+        # Create #forecast_horizon prediction elements elements
+        for _ in range(forecast_horizon):
             # Compute the average of the current data window: sma
             sma = data.mean()
 
@@ -609,7 +609,7 @@ elif model == 'SMA':
 # Static average of previous growth rates within the average_horizon
 elif model == 'AVERAGE':
 
-    print(f"""Calculating forecasts as the static average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon} quarters into the future ...""")
+    print(f"""Calculating forecasts as the static average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ...""")
     
     # Iterate over all quarterly datapoints 
     for col in df_qoq.columns:
@@ -620,7 +620,7 @@ elif model == 'AVERAGE':
         
         # Calculate the average, create forecast list
         average = data.mean()
-        forecast_qoq = pd.Series([average] * forecast_count)
+        forecast_qoq = pd.Series([average] * forecast_horizon)
 
 
         # Save unindexed predictions
@@ -839,30 +839,30 @@ qoq_forecast_index_df[col1_name] = qoq_forecast_index_df[col1_name].apply(
 if model in ['AVERAGE', 'SMA']:
 
     # Full Data qoq
-    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}_{average_horizon}_{forecast_horizon}.xlsx'
+    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
     df_combined_qoq.to_excel(os.path.join(folder_path, filename_df_combined_qoq))
 
     # Full Data yoy
-    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{average_horizon}_{forecast_horizon}.xlsx'
+    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
     df_combined_yoy.to_excel(os.path.join(folder_path, filename_df_combined_yoy)) 
 
     # Indexed Predictions df
-    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}_{average_horizon}_{forecast_horizon}.xlsx'
+    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
     qoq_forecast_index_df.to_excel(os.path.join(folder_path, filename_qoq_forecast_index_df)) 
 
 
 elif model == 'AR':
 
     # Full Data qoq
-    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon}.xlsx'
+    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
     df_combined_qoq.to_excel(os.path.join(folder_path, filename_df_combined_qoq))
 
     # Full Data yoy
-    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{AR_horizon}_{forecast_horizon}.xlsx'
+    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{AR_horizon}_{forecast_horizon-1}.xlsx'
     df_combined_yoy.to_excel(os.path.join(folder_path, filename_df_combined_yoy)) 
 
     # Indexed Predictions df
-    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon}.xlsx'
+    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
     qoq_forecast_index_df.to_excel(os.path.join(folder_path, filename_qoq_forecast_index_df)) 
 
 
