@@ -85,7 +85,7 @@ api_pull = True
 # --------------------------------------------------------------------------------------------------
 
 # Set the agent's forecasting method; options: 'AR', 'AVERAGE', 'SMA'
-model = 'AVERAGE'
+model = 'AR'
 
 # For AR model: set number of lags (sugested: 2); int
 AR_order = 2
@@ -458,7 +458,10 @@ def index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df):
 
     # Set correct index, adjust to middle of quarter
     last_quarter = data_index[-1]
-    forecast_index = pd.date_range(start=last_quarter, periods= forecast_horizon + 2, freq='QE')[2:]
+    forecast_index = pd.date_range(start=last_quarter, periods= forecast_horizon + 1, freq='QE')[1:]
+        # This shift happens because the input to this function is qoq and not raw data, accordingly,
+        # the last quarter where growth is available lies two quarters behind the publishing date, 
+        # with the forecasting beginning at one quarter behind the publishing date
     forecast_index -= pd.offsets.Day(45)
 
     # Append the forecast date, index and forecast data, merge to df
