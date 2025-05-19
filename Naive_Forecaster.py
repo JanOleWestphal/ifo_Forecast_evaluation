@@ -49,12 +49,16 @@ FUTURE DEVELOPMENTS:
 # api_pull             Determines whether the data is automatically pulled form the Bundesbank API 
 #                      (set = True) or whether a local version is used (set = False). 
 #                      ATTENTION: if False, local file must be named 'Bundesbank_GDP_raw.csv'
-#
+# 
+# target               Defines whether the models estimate growth in a quarter or growth relative to 
+#                      the previous quarter, options:
+#                           - "growth": calculates qoq growth rates (g_0= (t_1-t_0)/t_0)
+#                           - "change": calculates qoq changes (c_0 = (t_0-t_-1)/t_0)
 # model                Sets the forecast model used by the agent, options: 
-#                           - Auto-regressive model of order AR_order with a constant: 'AR' 
-#                           - Simple moving average: 'SMA'
-#                           - Naive average: just predict previous quarters' average for all future 
-#                             quarters: 'AVERAGE'
+#                           - 'AR': Auto-regressive model of order AR_order with a constant 
+#                           - 'SMA': Simple moving average
+#                           - 'AVERAGE': Naive average; just predict previous quarters' average for 
+#                              all future quarters
 # 
 # average_horizon      Sets the amount of previous quarters averaged over for 'SMA' and 'AVERAGE'
 # AR_horizon           Sets the time frame on which the AR- models are estimated in quarters. Set to 
@@ -83,6 +87,9 @@ api_pull = True
 # --------------------------------------------------------------------------------------------------
 # Define the model
 # --------------------------------------------------------------------------------------------------
+
+# Set whether changes to previous quarter or growth rates are calculated; 'change' or 'growth'
+target = 'change'
 
 # Set the agent's forecasting method; options: 'AR', 'AVERAGE', 'SMA'
 model = 'AR'
@@ -129,7 +136,9 @@ forecast_horizon = 20
 forecast_horizon += 1
 
 
-
+# Validate the target
+if target not in ["growth","change"] :
+    raise ValueError(f"target ({average_horizon}) must be 'change' or 'growth'")
 
 # Validate model type
 valid_models = {'AR', 'AVERAGE', 'SMA'}
@@ -233,10 +242,10 @@ else:
 if resultfolder_name == 'Default':
 
     if model in ['AVERAGE', 'SMA']:
-        result_subfolder = f"Results_{model}_{average_horizon}_{forecast_horizon-1}"
+        result_subfolder = f"Results_{model}_{average_horizon}_{forecast_horizon-1}_{target}"
 
     elif model == 'AR':
-        result_subfolder = f"Results_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}"
+        result_subfolder = f"Results_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}_{target}"
 
     # Faulty model selection
     else:
@@ -354,20 +363,31 @@ df = df.loc[:, df.columns.month.isin(months_to_keep)]
 # Inspect
 #print(df.head())
 
+print("Data cleaned ... \n")
+
 
 
 # --------------------------------------------------------------------------------------------------
-# Create quarterly growth rates: df_qoq (Quarter over Quarter)
+# Create quarterly growth rates or changes: df_qoq (Quarter over Quarter)
 # --------------------------------------------------------------------------------------------------
 
 # Calclulate growth % in t as relative forward differences, where .shift(-1) calls t+1 values for t
-df_qoq = ((df.shift(-1) - df) / df) *100
+if target == 'growth':
+    df_qoq = ((df.shift(-1) - df) / df) *100
+    print("Calculating quarter over quarter growth rates (relative to next quarter)... \n")
 
+# Calclulate change % in t as relative backward differences, where .shift(1) calls t-1 values for t
+elif target == 'change':
+    df_qoq = ((df - df.shift(1)) / df.shift(1)) *100
+    print("Calculating quarter over quarter changes (relative to previous quarter)... \n")
+
+else:
+    print("This should never be pritned, check if parameter validation is still up to date")
 
 # Inspect
 # print(df_qoq.head())
 
-print("Data cleaned ... \n")
+
 
 
 
@@ -842,30 +862,30 @@ qoq_forecast_index_df[col1_name] = qoq_forecast_index_df[col1_name].apply(
 if model in ['AVERAGE', 'SMA']:
 
     # Full Data qoq
-    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}_{average_horizon}_{forecast_horizon-1}_{target}.xlsx'
     df_combined_qoq.to_excel(os.path.join(folder_path, filename_df_combined_qoq))
 
     # Full Data yoy
-    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{average_horizon}_{forecast_horizon-1}_{target}.xlsx'
     df_combined_yoy.to_excel(os.path.join(folder_path, filename_df_combined_yoy)) 
 
     # Indexed Predictions df
-    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}_{average_horizon}_{forecast_horizon-1}_{target}.xlsx'
     qoq_forecast_index_df.to_excel(os.path.join(folder_path, filename_qoq_forecast_index_df)) 
 
 
 elif model == 'AR':
 
     # Full Data qoq
-    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+    filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}_{target}.xlsx'
     df_combined_qoq.to_excel(os.path.join(folder_path, filename_df_combined_qoq))
 
     # Full Data yoy
-    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+    filename_df_combined_yoy = f'Real_and_Predicted_YoY_{model}_{AR_horizon}_{forecast_horizon-1}_{target}.xlsx'
     df_combined_yoy.to_excel(os.path.join(folder_path, filename_df_combined_yoy)) 
 
     # Indexed Predictions df
-    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+    filename_qoq_forecast_index_df = f'Indexed_Forecasts_QoQ_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}_{target}.xlsx'
     qoq_forecast_index_df.to_excel(os.path.join(folder_path, filename_qoq_forecast_index_df)) 
 
 
@@ -885,7 +905,7 @@ Could also calculate and save absolute values, if needed ...
 
 # Check wether there is an AR_summary, save if yes
 if 'AR_summary' in globals():
-    filename_AR_summary = f'AR{AR_order}_{AR_horizon}_model_statistics.xlsx'
+    filename_AR_summary = f'AR{AR_order}_{AR_horizon}_{target}_model_statistics.xlsx'
     AR_summary.to_excel(os.path.join(folder_path, filename_AR_summary))
 
 
