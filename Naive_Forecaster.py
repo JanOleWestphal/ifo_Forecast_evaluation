@@ -38,7 +38,7 @@ FUTURE DEVELOPMENTS:
 # PARAMETER Setup:
 #
 # wd                   Sets the current working directory
-# resultfolder_name    Sets the folder name where results of a given run are printed, e.g. 'results',
+# resultfolder_name_n_forecast    Sets the folder name where results of a given run are printed, e.g. 'results',
 #                      Default naming: 'Results_model_memory-horizon_forecast'
 #                      OVERRIDES WITH EVERY RUN!
 #                       
@@ -69,11 +69,12 @@ FUTURE DEVELOPMENTS:
 # Folders and Data
 # --------------------------------------------------------------------------------------------------
 
+# Don't use this, get wd autoimatically from the script location
 # Set wd as '/path/to/your/project' or r'\path\to\your\project'
-wd = r'C:\Users\janol\OneDrive\Desktop\ifo\Konjunkturprognose Evaluierung\Python Workfolder'
+# wd = r'C:\Users\janol\OneDrive\Desktop\ifo\Konjunkturprognose Evaluierung\Python Workfolder'
 
 # Customize Resultfolder names, e.g. 'AR2_results', suggested: 'Default'
-resultfolder_name = 'Default'   #set 'Default' for default: 'Results_model_memory_forecast'
+resultfolder_name_n_forecast = 'Default'   #set 'Default' for default: 'Results_model_memory_forecast'
 
 # Decide wether to use the API pull or a local version of the file; True (suggested) or False 
 api_pull = True # True or False
@@ -233,6 +234,10 @@ sns.set_theme(style='whitegrid')
 # Working Directory and results folder
 # --------------------------------------------------------------------------------------------------
 
+# Get the current working directory
+wd = os.path.dirname(os.path.abspath(__file__))
+os.chdir(wd)  
+
 # Set working directory
 if wd:
     try:
@@ -248,7 +253,7 @@ else:
 
 #Define the result_subfolder
 
-if resultfolder_name == 'Default':
+if resultfolder_name_n_forecast == 'Default':
 
     if model in ['AVERAGE', 'SMA']:
         result_subfolder = f"Results_{model}_{average_horizon}_{forecast_horizon-1}"
