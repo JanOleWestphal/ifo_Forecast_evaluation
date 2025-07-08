@@ -62,6 +62,10 @@ evaluation_limit_quarter = 1            # 1,2,3 or 4; set as integer
 first_release_limit_year = 1970            # from 1970 onwards; set as integer
 first_release_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
+"""
+NOTE: Coosing a quarter other than 1 omits the entire year for YoY calculations
+"""
+
 # Define whether to evaluate against first release (True) or latest release (False)
 against_first_release = True           # True or False
 
@@ -88,7 +92,12 @@ AR_orders = [2]
 
 # For AR model: set the memory of the agent (timeframe the model is estimated on); list of int or 'FULL'
 AR_horizons = [50]
-# unstable estimates for 2020_Q3 (release date, last observation 2020_Q2) for below 48
+"""
+Note:
+-> unstable estimates for 2020_Q3 (release date, last observation 2020_Q2) for below 48
+-> this parameter does not conduct a degree of freedom correction, i.e. there are AR_horizon - AR_order 
+   free observations available.
+"""
 
 # For average-based models: set time frame over which the agent averages in quarters; list of int or 'FULL'
 average_horizons = [2]

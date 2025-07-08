@@ -67,7 +67,8 @@ if wd not in sys.path:
     sys.path.insert(0, wd)
 
 ## Import helperfunctions
-from helpers import *
+from Functionalities.helpers.helperfunctions import *
+
 
 
 # ==================================================================================================
@@ -189,18 +190,20 @@ else:
 # --------------------------------------------------------------------------------------------------
 
 ## Parent Folder
-base_path = os.path.join(wd, '0_Data', '3_Naive_Forecaster_Data')
+base_path = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data')
 folder_path = os.path.join(base_path, result_subfolder)
 
-# Create the folder if it doesn't exist
-os.makedirs(folder_path, exist_ok=True)
-
 ## Define Resultfolder path
-file_path_dt_qoq = os.path.join(wd, '0_Data', '3_Naive_Forecaster_Data', '0_Combined_QoQ_Forecasts')
-file_path_dt_yoy = os.path.join(wd, '0_Data', '3_Naive_Forecaster_Data', '0_Combined_YoY_Forecasts')
+file_path_dt_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '0_Combined_QoQ_Forecasts')
+file_path_dt_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '0_Combined_YoY_Forecasts')
 
-file_path_forecasts_yoy = os.path.join(wd, '0_Data', '3_Naive_Forecaster_Data', '1_YoY_Forecast_Vectors')
+file_path_forecasts_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_YoY_Forecast_Vectors')
+file_path_forecasts_yoy_2 = os.path.join(wd, '0_1_Output_Data', '2_YoY_Forecast_Vectors')
 
+# Create if needed
+for folder in [base_path, folder_path, 
+               file_path_dt_qoq, file_path_dt_yoy, file_path_forecasts_yoy, file_path_forecasts_yoy_2]:
+    os.makedirs(folder, exist_ok=True)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -214,7 +217,7 @@ def folder_clear(folder_path):
         if os.path.isfile(file_path):
             os.remove(file_path)
 
-# Clear
+## Clear
 folder_clear(folder_path)
 folder_clear(file_path_dt_qoq)
 folder_clear(file_path_dt_yoy)
@@ -245,7 +248,7 @@ folder_clear(file_path_forecasts_yoy)
 # ==================================================================================================
 
 # Define directory
-input_dir = os.path.join(wd, '0_Data', '2_Processed_Data', '1_GDP_series')
+input_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_GDP_series')
 
 # Define file paths
 df_path = os.path.join(input_dir, 'absolute_combined_GDP.xlsx')
@@ -280,7 +283,8 @@ row_mask = [
 df_qoq = df_qoq.loc[row_mask, :]
 df = df.loc[row_mask, :]
 
-
+# show(df)
+# show(df_qoq)
 
 
 
@@ -292,7 +296,7 @@ df = df.loc[row_mask, :]
 # -------------------------------------------------------------------------------------------------#
 
 """
-Defines the naive forecast estimation workflow in order to make the for-loop  belowmore concise
+Defines the naive forecast estimation workflow in order to make the for-loop  below more concise
 """
 
 # ==================================================================================================
@@ -495,8 +499,8 @@ def join_forecaster_output(df_qoq, qoq_forecast_df):
     # Concatenate all Series columnwise
     df_combined_qoq = pd.concat(series_list, axis=1)
 
-    # Dynamicaly reset index
-    start_date = pd.to_datetime(df.index[0])  # Convert to datetime if not already
+    # Dynamicaly reset index, offset one quarter because first one is NA
+    start_date = pd.to_datetime(df.index[0]) + pd.DateOffset(months=3)
     n_periods = len(df_combined_qoq)
 
     # Generate quarterly datetime index
@@ -545,70 +549,75 @@ def save_dt_indexed_results(df_combined_qoq, df_combined_yoy):
     df_combined_yoy.to_excel(os.path.join(file_path_dt_yoy, filename_df_combined_yoy)) 
 
 
+
 # --------------------------------------------------------------------------------------------------
 # Build and store YoY forecast Excels
 # --------------------------------------------------------------------------------------------------
 
-def get_yoy_forecast_series(df_combined_yoy):
+def get_yoy_forecast_series(df_combined_yoy, summer = False, winter = False):
 
     """
     Creates a df which matches the structure of the ifo and consensus forecast inputs and saves it 
     as an excel to <file_path_forecasts_yoy>
 
-    Gets date_of_forecast + depending on the quarter:
-     -> Q1 releases: y_minus1, y_minus1_forecast; y_0, y_0_forecast
-     -> Q2-4 releases: y_0, y_0_forecast; y_1, y_1_forecast
+
     """
 
+    df_combined_yoy = df_combined_yoy.copy()
+
     # Rescale Index to yearly values
-    df_combined_yoy.index = df_combined_yoy.index.year
+    df_combined_yoy.index = pd.to_datetime(df_combined_yoy.index).year
+    #show(df_combined_yoy)
 
     ## Loop through release dates to extract forecasts
     records = []
     for col in df.columns:
         date = pd.to_datetime(col)
-        q = date.quarter
         yr = date.year
 
         # base record
         rec = {"date_of_forecast": date}
 
-        if q == 1:
-            # Q1: use previous year and current year
-            y_m1 = yr - 1
-            rec.update({
-                "y_minus1":   y_m1,
-                "y_minus1_forecast": df_combined_yoy.at[y_m1, col],
-                "y_0":        yr,
-                "y_0_forecast":      df_combined_yoy.at[yr, col]
-            })
-        else:
-            # Q2–Q4: use current year and next year
-            y1 = yr + 1
-            rec.update({
-                "y_0":        yr,
-                "y_0_forecast":      df_combined_yoy.at[yr, col],
-                "y_1":        y1,
-                "y_1_forecast":      df_combined_yoy.at[y1, col]
-            })
+        y1 = yr + 1
+        rec.update({
+            "y_0":        yr,
+            "y_0_forecast":      df_combined_yoy.at[yr, col],
+            "y_1":        y1,
+            "y_1_forecast":      df_combined_yoy.at[y1, col]
+        })
 
         records.append(rec)
 
     # Build DataFrame, set forecast date as index
     yoy_forecast_series = pd.DataFrame.from_records(records).set_index("date_of_forecast")
 
+    ## Filter if needed
+    # Ensure index is datetime
+    yoy_forecast_series.index = pd.to_datetime(yoy_forecast_series.index)
 
+    # Filter based on seasonal parameters
+    if summer:
+        # Filter for Q2 (April, May, June - months 4, 5, 6)
+        yoy_forecast_series = yoy_forecast_series[yoy_forecast_series.index.month.isin([4, 5, 6])]
+    elif winter:
+        # Filter for Q4 (October, November, December - months 10, 11, 12)
+        yoy_forecast_series = yoy_forecast_series[yoy_forecast_series.index.month.isin([10, 11, 12])]
 
-    ## Save to Excel
-    # Dynamic Naming
+    # Dynamic Naming with seasonal suffix
+    seasonal_suffix = "_full"
+    if summer:
+        seasonal_suffix = "_summer"
+    elif winter:
+        seasonal_suffix = "_winter"
+
     if model in ['AVERAGE', 'SMA']:
-        filename_yoy_forecast_series = f'forecast_series_yoy_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
-
+        filename_yoy_forecast_series = f'forecast_series_yoy_{model}_{average_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx'
     elif model == 'AR':
-        filename_yoy_forecast_series = f'forecast_series_yoy_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+        filename_yoy_forecast_series = f'forecast_series_yoy_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx'
 
-    # Store
+    # Store to two locations
     yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy, filename_yoy_forecast_series), index=True)
+    yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy_2, filename_yoy_forecast_series), index=True)
 
     return yoy_forecast_series
 
@@ -671,7 +680,7 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
 
     ## Indices
     df_combined_qoq = rename_index_qoq(df_combined_qoq)
-    df_combined_yoy = rename_index_yoy(df_combined_yoy)
+    # yoy has already been renamed at this stage
 
     if 'AR_summary' in globals():
         AR_summary = rename_index_qoq(AR_summary)
@@ -784,7 +793,7 @@ for model in models:
         for AR_order, AR_horizon in product(AR_orders, AR_horizons):
 
             ## Start Execution in the inner loop
-            print(f"""Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, predicting present and forecasting {forecast_horizon-1} quarters into the future ...""")
+            print(f""" Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, predicting present and forecasting {forecast_horizon-1} quarters into the future ... \n""")
 
             ## Prepare the forecasting
             qoq_forecast_df, qoq_forecast_index_df = prep_forecast_objects()
@@ -835,6 +844,8 @@ for model in models:
             ## Store Output
             save_dt_indexed_results(df_combined_qoq, df_combined_yoy)
             yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy)
+            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True)
+            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True)
             save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, AR_summary)
 
 
@@ -849,7 +860,7 @@ for model in models:
 
         for average_horizon in average_horizons:
 
-            print(f"""Calculating forecasts as a simple moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ...""")
+            print(f""" Calculating forecasts as a simple moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ... \n""")
       
             ## Prepare the forecasting
             qoq_forecast_df, qoq_forecast_index_df = prep_forecast_objects()
@@ -891,6 +902,8 @@ for model in models:
             ## Store Output
             save_dt_indexed_results(df_combined_qoq, df_combined_yoy)
             yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy)
+            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True)
+            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True)
             save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df)
 
 
@@ -904,7 +917,7 @@ for model in models:
 
         for average_horizon in average_horizons:
 
-            print(f"""Calculating forecasts as the static average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ...""")
+            print(f""" Calculating forecasts as the static average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ... \n""")
 
             
             ## Prepare the forecasting
@@ -936,6 +949,8 @@ for model in models:
             ## Store Output
             save_dt_indexed_results(df_combined_qoq, df_combined_yoy)
             yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy)
+            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True)
+            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True)
             save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df)
 
 
@@ -960,7 +975,7 @@ for model in models:
 
 
 # --------------------------------------------------------------------------------------------------
-print(f" \n \nProgram complete! \n",f"Find Results in {base_path}\n")
+print(f" \n Naive Forecaster complete! \n",f"Find Results in {base_path}\n")
 # --------------------------------------------------------------------------------------------------
 
 

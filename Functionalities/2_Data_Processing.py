@@ -4,11 +4,11 @@
 # Title:        Data Processing
 #
 # Description:  Creates the dataframes used in the project
-#               Stores them in Folder 0_Data/2_Processed_Data.
+#               Stores them in Folder 0_0_Data/2_Processed_Data.
 #
 #               Processes both the real-time and historic GDP-data inputs as well as the forecasts.
 #               New Forecasts may be included by updating the respective files in the Subfolder
-#               0_Data\0_Forecast_Inputs
+#               0_0_Data\0_Forecast_Inputs
 # ==================================================================================================
 # --------------------------------------------------------------------------------------------------
 
@@ -58,14 +58,8 @@ import numpy as np
 pd.set_option('display.max_columns', None)
 # sns.set_theme(style='whitegrid')
 
-# Ensure project root is in sys.path
-wd = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if wd not in sys.path:
-    sys.path.insert(0, wd)
 
 
-# Import settings from the settings file
-import ifo_forecast_evaluation_settings as settings
 
 
 
@@ -73,7 +67,17 @@ import ifo_forecast_evaluation_settings as settings
 #                                IMPORT CORE CUSTOM FUNCTIONALITIES
 # ==================================================================================================
 
-from helperfunctions import *
+# Ensure project root is in sys.path
+wd = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if wd not in sys.path:
+    sys.path.insert(0, wd)
+
+## Import custom functions
+from Functionalities.helpers.helperfunctions import *
+
+
+# Import settings from the settings file
+import ifo_forecast_evaluation_settings as settings
 
 
 
@@ -177,7 +181,7 @@ def get_yoy(df):
 
 # Output filename
 rt_filename = 'Bundesbank_GDP_raw.csv'
-gdp_filepath = os.path.join(wd, "0_Data", "1_GDP_Data")
+gdp_filepath = os.path.join(wd, "0_0_Data", "1_GDP_Data")
 rt_filepath = os.path.join( gdp_filepath, rt_filename)
 
 
@@ -236,7 +240,7 @@ gdp_qoq_rt = get_qoq(gdp_rt)
 
 # Inspect
 # print(df_qoq.head())
-# show(df_qoq_rt)
+#show(gdp_qoq_rt)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -421,7 +425,7 @@ gdp_combined = gdp_combined.sort_index()
 gdp_qoq_combined = get_qoq(gdp_combined)
 gdp_yoy_combined = get_yoy(gdp_qoq_combined)
 
-
+#show(gdp_qoq_combined)
 
 
 
@@ -534,7 +538,7 @@ revision_yoy_gdp = revision_yoy_gdp.to_frame(name='revision')
 # ==================================================================================================
 
 # Ensure directory exists
-output_dir_gdp = os.path.join(wd, '0_Data', '2_Processed_Data', '1_GDP_series')
+output_dir_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_GDP_series')
 os.makedirs(output_dir_gdp, exist_ok=True)
 
 
@@ -575,52 +579,58 @@ gdp_yoy_combined.to_excel(df_yoy_path_comb, index=True)
 # ==================================================================================================
 
 # Ensure directory exists
-output_dir_ts = os.path.join(wd, '0_Data', '2_Processed_Data', '2_Evaluation_series')
+output_dir_ts = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_Evaluation_series')
+output_dir_ts_2 = os.path.join(wd, '0_1_Output_Data', '1_Evaluation_series')
+
 os.makedirs(output_dir_ts, exist_ok=True)
+os.makedirs(output_dir_ts_2, exist_ok=True)
 
 # --------------------------------------------------------------------------------------------------
 # First Release
 # --------------------------------------------------------------------------------------------------
 
-# Define file paths
-first_release_path = os.path.join(output_dir_ts, 'first_release_absolute_GDP.xlsx')
-first_release_qoq_path = os.path.join(output_dir_ts, 'first_release_qoq_GDP.xlsx')
-first_release_yoy_path = os.path.join(output_dir_ts, 'first_release_yoy_GDP.xlsx')
+# Save these to two locations:
 
-# Save first release files
-first_release_gdp.to_excel(first_release_path, index=True)
-first_release_qoq_gdp.to_excel(first_release_qoq_path, index=True)
-first_release_yoy_gdp.to_excel(first_release_yoy_path, index=True)
+for output_dir_ts in [output_dir_ts, output_dir_ts_2]:
+    # Define file paths
+    first_release_path = os.path.join(output_dir_ts, 'first_release_absolute_GDP.xlsx')
+    first_release_qoq_path = os.path.join(output_dir_ts, 'first_release_qoq_GDP.xlsx')
+    first_release_yoy_path = os.path.join(output_dir_ts, 'first_release_yoy_GDP.xlsx')
 
-
-# --------------------------------------------------------------------------------------------------
-# Latest Release
-# --------------------------------------------------------------------------------------------------
-
-# Define file paths
-latest_release_path = os.path.join(output_dir_ts, 'latest_release_absolute_GDP.xlsx')
-latest_release_qoq_path = os.path.join(output_dir_ts, 'latest_release_qoq_GDP.xlsx')
-latest_release_yoy_path = os.path.join(output_dir_ts, 'latest_release_yoy_GDP.xlsx')
-
-# Save latest release files
-latest_release_gdp.to_excel(latest_release_path, index=True)
-latest_release_qoq_gdp.to_excel(latest_release_qoq_path, index=True)
-latest_release_yoy_gdp.to_excel(latest_release_yoy_path, index=True)
+    # Save first release files
+    first_release_gdp.to_excel(first_release_path, index=True)
+    first_release_qoq_gdp.to_excel(first_release_qoq_path, index=True)
+    first_release_yoy_gdp.to_excel(first_release_yoy_path, index=True)
 
 
-# --------------------------------------------------------------------------------------------------
-# Revision Data
-# --------------------------------------------------------------------------------------------------
+    # --------------------------------------------------------------------------------------------------
+    # Latest Release
+    # --------------------------------------------------------------------------------------------------
 
-# Define file paths
-revision_path = os.path.join(output_dir_ts, 'revision_absolute_GDP.xlsx')
-revision_qoq_path = os.path.join(output_dir_ts, 'revision_qoq_GDP.xlsx')
-revision_yoy_path = os.path.join(output_dir_ts, 'revision_yoy_GDP.xlsx')
+    # Define file paths
+    latest_release_path = os.path.join(output_dir_ts, 'latest_release_absolute_GDP.xlsx')
+    latest_release_qoq_path = os.path.join(output_dir_ts, 'latest_release_qoq_GDP.xlsx')
+    latest_release_yoy_path = os.path.join(output_dir_ts, 'latest_release_yoy_GDP.xlsx')
 
-# Save revision files
-revision_gdp.to_excel(revision_path, index=True)
-revision_qoq_gdp.to_excel(revision_qoq_path, index=True)
-revision_yoy_gdp.to_excel(revision_yoy_path, index=True)
+    # Save latest release files
+    latest_release_gdp.to_excel(latest_release_path, index=True)
+    latest_release_qoq_gdp.to_excel(latest_release_qoq_path, index=True)
+    latest_release_yoy_gdp.to_excel(latest_release_yoy_path, index=True)
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Revision Data
+    # --------------------------------------------------------------------------------------------------
+
+    # Define file paths
+    revision_path = os.path.join(output_dir_ts, 'revision_absolute_GDP.xlsx')
+    revision_qoq_path = os.path.join(output_dir_ts, 'revision_qoq_GDP.xlsx')
+    revision_yoy_path = os.path.join(output_dir_ts, 'revision_yoy_GDP.xlsx')
+
+    # Save revision files
+    revision_gdp.to_excel(revision_path, index=True)
+    revision_qoq_gdp.to_excel(revision_qoq_path, index=True)
+    revision_yoy_gdp.to_excel(revision_yoy_path, index=True)
 
 
 

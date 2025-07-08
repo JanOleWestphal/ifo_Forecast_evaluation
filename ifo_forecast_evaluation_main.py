@@ -25,7 +25,8 @@
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
-# 
+print('\n \nINNITIATING THE ifo FORECAST EVALUATION ... \n')
+
 # --------------------------------------------------------------------------------------------------
 #                                               Setup
 # --------------------------------------------------------------------------------------------------
@@ -48,14 +49,27 @@ def execute_script(script_name):
     module_name = script_name.replace('.py', '')
     module_path = f"Functionalities.{module_name}"
 
-    print(f"Executing module: {module_path}\n")
+    print(f"\nExecuting module: {module_path}\n")
 
-    result = subprocess.run(
-        [sys.executable, "-m", module_path],
-        cwd=workfolder,  # workfolder should be your project root
-        #capture_output=True,
-        text=True
-    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", module_path],
+            cwd=workfolder,  # workfolder should be your project root
+            # capture_output=True,
+            text=True,
+            check=True  # Raise CalledProcessError if non-zero exit
+        )
+
+        print(f"Executed {script_name} successfully.\n \n")
+
+    except subprocess.CalledProcessError as e:
+        print(f"\n❌ Failed to execute {script_name} (exit code {e.returncode})")
+        print("----- STDERR -----")
+        print(e.stderr.strip())
+        print("------------------\n")
+
+    except Exception as e:
+        print(f"\n❌ Unexpected error during execution of {script_name}: {e}\n")
 
     # Debug output if needed
     """
@@ -74,7 +88,6 @@ def execute_script(script_name):
         raise
     """
 
-    print(f"Executed {script_name} successfully.\n \n")
 
 
 
@@ -116,13 +129,14 @@ else:
 # ==================================================================================================
 # PERFORMANCE EVALUATION and OUTPUT
 # ==================================================================================================
+"""
 if settings.run_evaluation:
-    execute_script('4_Evaluation_and_Output.py')
+    execute_script('x_Evaluation_and_Output_old.py')
 else: 
     print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
+"""
 
-
-print('\n \nifo Forecast Evaluation completed successfully!')
+print('\nifo Forecast Evaluation completed successfully! \n')
 
 
 # -------------------------------------------------------------------------------------------------#
