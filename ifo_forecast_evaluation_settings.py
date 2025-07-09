@@ -29,10 +29,12 @@ run_data_processing = True  # True or False
 # 3.: Decide whether to re-run the Naive Forecaster
 run_naive_forecaster = True  # True or False
 
-# 4.: Decide whether to generate the evaluation outpt module
-run_evaluation = True  # True or False
+# 4.: Decide whether to run the quarterly evaluation output module
+run_quarterly_evaluation = True  # True or False
 
 
+## Decide whether to overwrite previous output (always overwriten if same functionality is executed)
+clear_result_folders = True   # True or False
 
 # ==================================================================================================
 #                                         DATA SETTINGS
@@ -49,7 +51,6 @@ api_pull = True # True or False; only set False if no internet connection
 
 # Features to be developed:
 """
-
 - Option what to include in iteratively genereated result graphs
 
 """

@@ -14,6 +14,7 @@ import importlib
 import subprocess
 import sys
 import os
+import glob
 from datetime import datetime, date
 
 
@@ -32,12 +33,72 @@ import ifo_forecast_evaluation_settings as settings
 
 
 
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                      FOLDER PREPARATION                                          #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+# Clearing Function
+def folder_clear(folder_path): 
+    for file in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, file)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+
+
+
 
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                                       Data Processing                                            #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
+
+
+
+# ==================================================================================================
+# Select Evaluation timeframe
+# ==================================================================================================
+
+## Filter columns: only keep columns >= first_release_limit_year/quarter
+def filter_first_release_limit(df):
+
+    # Filter cols prior to first release limit
+    col_mask = [
+        (col.year > first_release_limit_year) or
+        (col.year == first_release_limit_year and (col.quarter >= first_release_limit_quarter))
+        for col in df_qoq.columns
+    ]
+
+    # Apply filter
+    df = df.loc[:, col_mask]
+
+    #show(df)
+
+    return df
+
+
+
+## Filter rows: only keep rows >= evaluation_limit_year/quarter
+def filter_evaluation_limit(df):
+
+    # Filter rows prior to evaluation limit
+    row_mask = [
+        (idx.year > evaluation_limit_year) or
+        (idx.year == evaluation_limit_year and (idx.quarter >= evaluation_limit_quarter))
+        for idx in df_qoq.index
+    ]
+
+    # Apply
+    df = df.loc[row_mask, :]
+
+    #show(df)
+
+    return df
+
+
+
 
 
 # --------------------------------------------------------------------------------------------------
@@ -126,6 +187,22 @@ def get_yoy(df):
     print(" Calculating year over year changes (relative to previous year)... \n")
 
     return df_out
+
+
+
+
+# ==================================================================================================
+# Dynamically extract prelimiary results of previous scripts
+# ==================================================================================================
+
+## Helper function to load all Excel files in a folder into a dict of DataFrames
+def load_excels_to_dict(folder_path):
+    excel_files = glob.glob(os.path.join(folder_path, '*.xlsx'))
+    dfs = {}
+    for file in excel_files:
+        name = os.path.splitext(os.path.basename(file))[0]
+        dfs[name] = pd.read_excel(file, index_col=0)
+    return dfs
 
 
 
@@ -224,5 +301,202 @@ def rename_col_data(prefix, df):
         for col in df.columns
     ]
     return df
+
+
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                             Analyzing Error Measures - Functions                                 #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+
+# ==================================================================================================
+#                                       Data Preparation
+# ==================================================================================================
+
+## Select common cols in both dfs
+def match_evaluation_qoq(forecast_df, eval_df):
+
+    """
+    Subset forecast_df and eval_df to only matching quarters
+    based on their 'date_of_forecast'/'date' columns.
+    """
+
+    # Convert dates to yyyy-Qx format for matching
+    forecast_quarters = forecast_df['date_of_forecast'].apply(lambda d: f"{d.year}-Q{((d.month - 1) // 3 + 1)}")
+    eval_quarters = eval_df['date'].apply(lambda d: f"{d.year}-Q{((d.month - 1) // 3 + 1)}")
+
+    # Find common quarters
+    common_quarters = set(forecast_quarters).intersection(set(eval_quarters))
+
+    # Subset both DataFrames
+    forecast_df_matched = forecast_df[forecast_quarters.isin(common_quarters)].copy()
+    eval_df_matched = eval_df[eval_quarters.isin(common_quarters)].copy()
+
+    return forecast_df_matched, eval_df_matched
+
+
+
+## Create YoY evaluation setup
+def get_evaluation_yoy(forecast_df, eval_df):
+
+    """
+    Create joint df with forecasted and realized YoY growth values, used to compute error statistics:
+
+    Extend forecast_df by adding y_0_eval, y_1_eval, y_minus1_eval columns
+    containing the actual evaluation data from eval_df, matched by year.
+    
+    Only add eval columns if the corresponding y_*_forecast column exists.
+    """
+
+    # Convert eval_df index to years
+    eval_years = eval_df.index.year
+
+    # Prepare the extended DataFrame
+    extended_df = forecast_df.copy()
+
+    # Helper to add eval column if forecast column exists
+    def add_eval_col(forecast_col, eval_col_name, year_col_name):
+        if forecast_col in forecast_df.columns:
+            # Get the year values from forecast_df
+            years = forecast_df[year_col_name]
+            # Get corresponding eval values by matching year to eval_df index
+            eval_values = years.map(
+                lambda y: eval_df.loc[eval_df.index.year == y]['value'].iloc[0]
+                if any(eval_years == y) else pd.NA
+            )
+            # Insert eval column *after* forecast_col
+            col_idx = extended_df.columns.get_loc(forecast_col) + 1
+            extended_df.insert(col_idx, eval_col_name, eval_values)
+
+    # Add y_minus1_eval
+    add_eval_col('y_minus1_forecast', 'y_minus1_eval', 'y_minus1')
+
+    # Add y_0_eval
+    add_eval_col('y_0_forecast', 'y_0_eval', 'y_0')
+
+    # Add y_1_eval
+    add_eval_col('y_1_forecast', 'y_1_eval', 'y_1')
+
+    return extended_df
+
+
+
+
+# ==================================================================================================
+#                                       Error Measures
+# ==================================================================================================
+
+# --------------------------------------------------------------------------------------------------
+# Get Summary Statistics
+# --------------------------------------------------------------------------------------------------
+
+## Raw errors
+def get_error(forecast_df_matched, eval_df_matched):
+    """
+    Compute raw errors (forecast - actual) between matched forecast and evaluation DataFrames.
+    """
+    diff = forecast_df_matched - eval_df_matched
+    return diff
+
+## Mean errors
+def get_me(forecast_df_matched, eval_df_matched):
+    """
+    Compute Mean Error (ME) between matched forecast and evaluation DataFrames.
+    """
+    diff = forecast_df_matched - eval_df_matched
+    me = diff.mean()
+    return me
+
+## MAE
+def get_mae(forecast_df_matched, eval_df_matched):
+    """
+    Compute Mean Absolute Error (MAE) between matched forecast and evaluation DataFrames.
+    """
+    diff = forecast_df_matched - eval_df_matched
+    mae = diff.abs().mean()
+    return mae
+
+## MSE
+def get_mse(forecast_df_matched, eval_df_matched):
+    """
+    Compute Mean Squared Error (MSE) between matched forecast and evaluation DataFrames.
+    """
+    diff = forecast_df_matched - eval_df_matched
+    mse = (diff ** 2).mean()
+    return mse
+
+## RMSE
+def get_rmse(forecast_df_matched, eval_df_matched):
+    """
+    Compute Root Mean Squared Error (RMSE) between matched forecast and evaluation DataFrames.
+    """
+    diff = forecast_df_matched - eval_df_matched
+    rmse = np.sqrt((diff ** 2).mean())
+    return rmse
+
+## Standard Errors
+def get_se(forecast_df_matched, eval_df_matched):
+    """
+    Compute Standard Error (SE) of the forecast errors for matched DataFrames.
+    """
+    diff = forecast_df_matched - eval_df_matched
+    se = diff.std().mean()
+    return se
+
+## n
+def get_n(forecast_df_matched, eval_df_matched):
+    """
+    Compute the number of valid (non-NaN) forecast-evaluation pairs for matched DataFrames.
+    """
+    n = (forecast_df_matched - eval_df_matched).count().sum()
+    return n
+
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Build Evaluation Table
+# --------------------------------------------------------------------------------------------------
+
+def build_and_save_evaluation_table(forecast_df_matched, eval_df_matched, save_path, file_name):
+    """
+    Build a joint evaluation table with error measures and save it as an Excel file.
+
+    Parameters:
+        forecast_df_matched (pd.DataFrame): Forecasts matched to evaluation data.
+        eval_df_matched (pd.DataFrame): Actual values matched to forecasts.
+        save_path (str): Path to save the Excel file.
+    """
+    # Compute error measures
+    me = get_me(forecast_df_matched, eval_df_matched)
+    mae = get_mae(forecast_df_matched, eval_df_matched)
+    mse = get_mse(forecast_df_matched, eval_df_matched)
+    rmse = get_rmse(forecast_df_matched, eval_df_matched)
+    se = get_se(forecast_df_matched, eval_df_matched)
+    n = get_n(forecast_df_matched, eval_df_matched)
+
+    # Build table
+    eval_table = pd.DataFrame({
+        "ME": [me],
+        "MAE": [mae],
+        "MSE": [mse],
+        "RMSE": [rmse],
+        "SE": [se],
+        "N": [n]
+    })
+
+
+    # Save to Excel
+    eval_table.to_excel(os.path.join(save_path, file_name))
+
+    return eval_table
 
 

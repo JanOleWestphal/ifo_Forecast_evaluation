@@ -127,6 +127,15 @@ else:
 
 
 # ==================================================================================================
+# QUARTERLY EVALUATION and OUTPUT
+# ==================================================================================================
+if settings.run_evaluation:
+    execute_script('x_Evaluation_and_Output_old.py')
+else: 
+    print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
+
+
+# ==================================================================================================
 # PERFORMANCE EVALUATION and OUTPUT
 # ==================================================================================================
 """

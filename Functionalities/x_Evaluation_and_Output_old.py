@@ -134,17 +134,17 @@ yoy_first_eval = pd.read_excel(yoy_path_first, index_col=0)
 
 ## Latest Releases
 # Filepaths
-#absolute_path_last= os.path.join(eval_path, 'latest_release_absolute_GDP.xlsx')
-qoq_path_last= os.path.join(eval_path, 'latest_release_qoq_GDP.xlsx')
-yoy_path_last = os.path.join(eval_path, 'latest_release_yoy_GDP.xlsx')
+#absolute_path_latest= os.path.join(eval_path, 'latest_release_absolute_GDP.xlsx')
+qoq_path_latest= os.path.join(eval_path, 'latest_release_qoq_GDP.xlsx')
+yoy_path_latest = os.path.join(eval_path, 'latest_release_yoy_GDP.xlsx')
 
 
 # Load 
-#absolute_last_eval= pd.read_excel(absolute_path_last, index_col=0)
-qoq_last_eval = pd.read_excel(qoq_path_last, index_col=0)
-yoy_last_eval = pd.read_excel(yoy_path_last, index_col=0)
+#absolute_latest_eval= pd.read_excel(absolute_path_latest, index_col=0)
+qoq_latest_eval = pd.read_excel(qoq_path_latest, index_col=0)
+yoy_latest_eval = pd.read_excel(yoy_path_latest, index_col=0)
 
-#show(yoy_last_eval)
+#show(yoy_latest_eval)
 
 
 ## Revision
@@ -452,7 +452,7 @@ consensus_result_path = os.path.join(table_folder, '3_consensus_evaluations')
 
 ## Get Evaluation df:
 ifo_dec_first = get_evaluation_yoy(ifo_dec, yoy_first_eval)
-ifo_dec_last = get_evaluation_yoy(ifo_dec, yoy_last_eval)
+ifo_dec_latest = get_evaluation_yoy(ifo_dec, yoy_latest_eval)
 
 #show(ifo_dec_first)
 
@@ -461,7 +461,7 @@ ifo_dec_y0_errors_first = build_and_save_evaluation_table(ifo_dec_first['y_0_for
                                                        ifo_result_path, 
                                                        f'ifo_december_y0_forecast_errors_since_{evaluation_limit_year}-Q{evaluation_limit_quarter}_first_release.xlsx')
 
-ifo_dec_y0_errors_last = build_and_save_evaluation_table(ifo_dec_last['y_0_forecast'], ifo_dec_last['y_0_eval'], 
+ifo_dec_y0_errors_latest = build_and_save_evaluation_table(ifo_dec_latest['y_0_forecast'], ifo_dec_latest['y_0_eval'], 
                                                        ifo_result_path, 
                                                        f'ifo_december_y0__forecast_errors_since_{evaluation_limit_year}-Q{evaluation_limit_quarter}_latest_release.xlsx')
 
@@ -471,7 +471,7 @@ ifo_dec_y1_errors_first = build_and_save_evaluation_table(ifo_dec_first['y_1_for
                                                        ifo_result_path, 
                                                        f'ifo_december_y1_forecast_errors_since_{evaluation_limit_year}-Q{evaluation_limit_quarter}_first_release.xlsx')
 
-ifo_dec_y1errors_last = build_and_save_evaluation_table(ifo_dec_last['y_1_forecast'], ifo_dec_last['y_1_eval'], 
+ifo_dec_y1errors_latest = build_and_save_evaluation_table(ifo_dec_latest['y_1_forecast'], ifo_dec_latest['y_1_eval'], 
                                                        ifo_result_path, 
                                                        f'ifo_december_y1_forecast_errors_since_{evaluation_limit_year}-Q{evaluation_limit_quarter}_latest_release.xlsx')
 
@@ -483,14 +483,14 @@ ifo_dec_y1errors_last = build_and_save_evaluation_table(ifo_dec_last['y_1_foreca
 
 ## Get Evaluation df:
 ifo_jan_first = get_evaluation_yoy(ifo_jan, yoy_first_eval)
-ifo_jan_last = get_evaluation_yoy(ifo_jan, yoy_last_eval)
+ifo_jan_latest = get_evaluation_yoy(ifo_jan, yoy_latest_eval)
 
 ## y_minus1 evaluation
 ifo_jan_yminus1_errors_first = build_and_save_evaluation_table(ifo_jan_first['y_minus1_forecast'], ifo_jan_first['y_minus1_eval'], 
                                                        ifo_result_path, 
                                                        f'ifo_january_yminus1_forecast_errors_since_{evaluation_limit_year}-Q{evaluation_limit_quarter}_first_release.xlsx')
 
-ifo_jan_yminus_errors_last = build_and_save_evaluation_table(ifo_jan_last['y_minus1_forecast'], ifo_jan_last['y_minus1_eval'], 
+ifo_jan_yminus_errors_latest = build_and_save_evaluation_table(ifo_jan_latest['y_minus1_forecast'], ifo_jan_latest['y_minus1_eval'], 
                                                        ifo_result_path, 
                                                        f'ifo_january_yminus1_forecast_errors_since_{evaluation_limit_year}-Q{evaluation_limit_quarter}_latest_release.xlsx')
 
@@ -499,7 +499,7 @@ ifo_jan_y0_errors_first = build_and_save_evaluation_table(ifo_jan_first['y_0_for
                                                        ifo_result_path, 
                                                        f'ifo_january_y0_forecast_errors_since_{evaluation_limit_year}-Q{evaluation_limit_quarter}_first_release.xlsx')
 
-ifo_jan_y0_errors_last = build_and_save_evaluation_table(ifo_jan_last['y_0_forecast'], ifo_jan_last['y_0_eval'], 
+ifo_jan_y0_errors_latest = build_and_save_evaluation_table(ifo_jan_latest['y_0_forecast'], ifo_jan_latest['y_0_eval'], 
                                                        ifo_result_path, 
                                                        f'ifo_january_y0_forecast_errors_since_{evaluation_limit_year}-Q{evaluation_limit_quarter}_latest_release.xlsx')
 

@@ -5,7 +5,7 @@
 # Title:        Naive Forecaster
 #
 # Author:       Jan Ole Westphal
-# Date:         2025-04
+# Date:         2025-07
 #
 # Description:  A program for creating simple GDP-growth forecasting, pulling the latest Bundesbank 
 #               quaterly GDP releases. For every quaterly released data-series, a new forecast model
@@ -197,12 +197,18 @@ folder_path = os.path.join(base_path, result_subfolder)
 file_path_dt_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '0_Combined_QoQ_Forecasts')
 file_path_dt_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '0_Combined_YoY_Forecasts')
 
+file_path_forecasts_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_QoQ_Forecast_Tables')
+file_path_forecasts_qoq_2 = os.path.join(wd, '0_1_Output_Data', '3_QoQ_Forecast_Tables')
+
 file_path_forecasts_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_YoY_Forecast_Vectors')
 file_path_forecasts_yoy_2 = os.path.join(wd, '0_1_Output_Data', '2_YoY_Forecast_Vectors')
 
 # Create if needed
 for folder in [base_path, folder_path, 
-               file_path_dt_qoq, file_path_dt_yoy, file_path_forecasts_yoy, file_path_forecasts_yoy_2]:
+               file_path_dt_qoq, file_path_dt_yoy,
+               file_path_forecasts_qoq, file_path_forecasts_qoq_2,
+               file_path_forecasts_yoy, file_path_forecasts_yoy_2]:
+    
     os.makedirs(folder, exist_ok=True)
 
 
@@ -210,18 +216,12 @@ for folder in [base_path, folder_path,
 # Clear Result Folders
 # --------------------------------------------------------------------------------------------------
 
-# Clearing Function
-def folder_clear(folder_path): 
-    for file in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, file)
-        if os.path.isfile(file_path):
-            os.remove(file_path)
-
 ## Clear
-folder_clear(folder_path)
-folder_clear(file_path_dt_qoq)
-folder_clear(file_path_dt_yoy)
-folder_clear(file_path_forecasts_yoy)
+if settings.clear_result_folders:
+    folder_clear(folder_path)
+    folder_clear(file_path_dt_qoq)
+    folder_clear(file_path_dt_yoy)
+    folder_clear(file_path_forecasts_yoy)
 
 
 
@@ -264,34 +264,18 @@ df_qoq = pd.read_excel(df_qoq_path, index_col=0)
 # Select Evaluation timeframe
 # ==================================================================================================
 
-# Filter columns: only keep columns >= first_release_limit_year/quarter
-col_mask = [
-    (col.year > first_release_limit_year) or
-    (col.year == first_release_limit_year and (col.quarter >= first_release_limit_quarter))
-    for col in df_qoq.columns
-]
+# Apply row and col selection from helperfunctions:
+for df in [df, df_qoq]:
+    df = filter_first_release_limit(df)
+    df = filter_evaluation_limit(df)
 
-df_qoq = df_qoq.loc[:, col_mask]
-df = df.loc[:, col_mask]
-
-# Filter rows: only keep rows >= evaluation_limit_year/quarter
-row_mask = [
-    (idx.year > evaluation_limit_year) or
-    (idx.year == evaluation_limit_year and (idx.quarter >= evaluation_limit_quarter))
-    for idx in df_qoq.index
-]
-df_qoq = df_qoq.loc[row_mask, :]
-df = df.loc[row_mask, :]
-
-# show(df)
-# show(df_qoq)
 
 
 
 
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
-#                                   MAIN EXECUTION FUNCTIONS                                       #
+#                   MAIN EXECUTION FUNCTIONS - Preparation and estimation                          #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
@@ -461,8 +445,105 @@ def AR_diagnostics(col, results, AR_order):
 
 
 
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                   MAIN EXECUTION FUNCTIONS - Output Generation and Processing                    #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
 # ==================================================================================================
-# PROCESS AND SAVE THE ESTIMATION RESULTS: concatenate, rename indices, store results into wd
+# GET QUARTERLY FORECASTS (same structure as the ifo quarterly forecasts)
+# ==================================================================================================
+
+def retrieve_qoq_predictions(qoq_forecast_df):
+    """
+    I: Set the index equal to colnames, shift every col such that the col name matches the row name on
+    the first observation
+
+    II: Store
+    """
+
+    ## ---------------------------------------------------------------------------
+    ## Reshape the qoq Forecasts into the same format the ifo forecasts are in
+    ## ---------------------------------------------------------------------------
+
+    # Make a copy to avoid modifying the original DataFrame
+    naive_qoq_forecasts = qoq_forecast_df.copy()
+
+    # Convert columns to datetime if they aren't already
+    columns_datetime = pd.to_datetime(naive_qoq_forecasts.columns)
+
+    # Ensure the DataFrame index is datetime first
+    naive_qoq_forecasts.index = pd.to_datetime(naive_qoq_forecasts.index, errors='coerce')
+
+    # Drop rows where coercion failed (e.g. if index was pure integers)
+    naive_qoq_forecasts = naive_qoq_forecasts[naive_qoq_forecasts.index.notna()]
+
+    # Now extend the index safely
+    columns_datetime = pd.to_datetime(naive_qoq_forecasts.columns)
+    start_date = columns_datetime.min()
+    max_shift_needed = len(columns_datetime)
+    total_periods_needed = len(naive_qoq_forecasts) + max_shift_needed
+
+    new_index = pd.date_range(start=start_date, periods=total_periods_needed, freq='3ME')
+
+    # Safe union + sorting
+    naive_qoq_forecasts = naive_qoq_forecasts.reindex(
+    index=new_index.union(naive_qoq_forecasts.index)
+    ).sort_index()
+
+    #show(naive_qoq_forecasts)
+
+    # Match on quarterly basis: Ensure index and columns are datetime (quarterly aligned)
+    naive_qoq_forecasts.index = pd.to_datetime(naive_qoq_forecasts.index).to_period('Q').to_timestamp()
+    naive_qoq_forecasts.columns = pd.to_datetime(naive_qoq_forecasts.columns).to_period('Q').to_timestamp()
+
+    # Shift each column so that its first non-NA value aligns with its column date
+    for col in naive_qoq_forecasts.columns:
+        col_date = pd.to_datetime(col).to_period('Q').to_timestamp()
+
+        # Check if column date exists in index
+        if col_date in naive_qoq_forecasts.index:
+            target_row = naive_qoq_forecasts.index.get_loc(col_date)
+            naive_qoq_forecasts[col] = naive_qoq_forecasts[col].shift(target_row)
+
+    # Drop empty rows
+    naive_qoq_forecasts = naive_qoq_forecasts.dropna(how='all')
+
+    #show(naive_qoq_forecasts)
+
+
+
+    ## ---------------------------------------------------------------------------
+    ## Store the Results
+    ## ---------------------------------------------------------------------------
+
+    # Store to two different locations
+    for path in [file_path_forecasts_qoq, file_path_forecasts_qoq_2]:
+
+        # Model-based dynamic naming
+        if model in ['AVERAGE', 'SMA']:
+            qoq_forecast_name = f'naive_qoq_forecasts_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+
+        elif model == 'AR':
+            qoq_forecast_name = f'naive_qoq_forecasts_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+
+        # Store to path
+        naive_qoq_forecasts.to_excel(os.path.join(path, qoq_forecast_name))
+
+
+    return naive_qoq_forecasts
+
+
+
+
+
+
+
+
+
+# ==================================================================================================
+# JOIN OUTPUT WITH PUBLISHED VALUES: concatenate, rename indices, store results into wd
 # ==================================================================================================
 
 # --------------------------------------------------------------------------------------------------
@@ -474,6 +555,9 @@ def join_forecaster_output(df_qoq, qoq_forecast_df):
     ## -------------------------------------------------
     ##  Build combined observed-forecasted dataframe
     ## -------------------------------------------------
+
+    df_qoq = df_qoq.copy()
+    qoq_forecast_df = qoq_forecast_df.copy()
 
     # Store realized-predicted series in list:
     series_list = []
@@ -624,11 +708,8 @@ def get_yoy_forecast_series(df_combined_yoy, summer = False, winter = False):
 
 
 
-
-
-
 # --------------------------------------------------------------------------------------------------
-# Save prediction time series as excel for evaluation 
+# OLD REFERENCE OUTPUT: Save prediction time series as excel for evaluation 
 # --------------------------------------------------------------------------------------------------
 
 def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, AR_summary=None):
@@ -758,8 +839,32 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
 
 
 
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                              Define the Output Processing Workflow
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
 
+def process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary):
 
+            ## Process
+            df_combined_qoq, df_combined_yoy = join_forecaster_output(df_qoq, qoq_forecast_df)
+
+            ## Store Output
+
+            # qoq Time Series
+            retrieve_qoq_predictions(qoq_forecast_df)
+
+            # DateTime indexed results
+            save_dt_indexed_results(df_combined_qoq, df_combined_yoy)
+
+            # YoY Forecasts
+            yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy)
+            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True)
+            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True)
+
+            # Reformated combined time series
+            save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, AR_summary)
 
 
 
@@ -836,17 +941,14 @@ for model in models:
             AR_summary = pd.concat([r.to_frame().T for r in summary_rows], ignore_index=True)
             qoq_forecast_df = pd.concat(forecast_cols, axis=1)
             qoq_forecast_index_df = pd.concat(index_dfs, ignore_index=True)
+            # show(qoq_forecast_df)
 
 
-            ## Process
-            df_combined_qoq, df_combined_yoy = join_forecaster_output(df_qoq, qoq_forecast_df)
+            ## Process and Save results
+            process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary)
 
-            ## Store Output
-            save_dt_indexed_results(df_combined_qoq, df_combined_yoy)
-            yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy)
-            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True)
-            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True)
-            save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, AR_summary)
+
+
 
 
 
@@ -896,15 +998,8 @@ for model in models:
                 qoq_forecast_index_df = index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df, forecast_horizon)
 
 
-            ## Process
-            df_combined_qoq, df_combined_yoy = join_forecaster_output(df_qoq, qoq_forecast_df)
-
-            ## Store Output
-            save_dt_indexed_results(df_combined_qoq, df_combined_yoy)
-            yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy)
-            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True)
-            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True)
-            save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df)
+            ## Process and Save results
+            process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary)
 
 
 
@@ -943,15 +1038,8 @@ for model in models:
                 qoq_forecast_index_df = index_dict(col, data_index, forecast_qoq, qoq_forecast_index_df, forecast_horizon)
 
 
-            ## Process
-            df_combined_qoq, df_combined_yoy = join_forecaster_output(df_qoq, qoq_forecast_df)
-
-            ## Store Output
-            save_dt_indexed_results(df_combined_qoq, df_combined_yoy)
-            yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy)
-            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True)
-            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True)
-            save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df)
+            ## Process and Save results
+            process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary)
 
 
 
@@ -974,12 +1062,11 @@ for model in models:
 
 
 
+
+
 # --------------------------------------------------------------------------------------------------
 print(f" \n Naive Forecaster complete! \n",f"Find Results in {base_path}\n")
 # --------------------------------------------------------------------------------------------------
-
-
-
 
 
 

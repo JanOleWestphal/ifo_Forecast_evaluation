@@ -260,9 +260,6 @@ gdp_yoy_rt = get_yoy(gdp_qoq_rt)
 
 
 
-
-
-
 # -------------------------------------------------------------------------------------------------#
 # ==================================================================================================
 #                                    Process 1995-2005 data
@@ -308,8 +305,6 @@ avg_2000 = gdp_95_05.loc[rows_2000, last_col].mean()
 gdp_95_05 = 100 * gdp_95_05 / avg_2000
 
 # show(gdp_95_05)
-
-
 
 
 
@@ -436,9 +431,9 @@ gdp_yoy_combined = get_yoy(gdp_qoq_combined)
 
 
 # -------------------------------------------------------------------------------------------------#
-# ==================================================================================================
-#                                    Evaluation Time Series
-# ==================================================================================================
+# =================================================================================================#
+#                                    Evaluation Time Series                                        #
+# =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
 
@@ -526,10 +521,91 @@ revision_yoy_gdp = revision_yoy_gdp.to_frame(name='revision')
 
 
 
+
+
 # -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                          DATA PROCESSING - quarterly ifo Forecasts                               #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
 # ==================================================================================================
-#                                        Store Output
+#  Load ifo qoq Forecasts
 # ==================================================================================================
+
+## Filepath
+ifo_qoq_input_path = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '1_ifo_quarterly')
+
+# --------------------------------------------------------------------------------------------------
+# Load in the excel dynamically
+# --------------------------------------------------------------------------------------------------
+
+# Find the first Excel file in the directory
+excel_files = [f for f in os.listdir(ifo_qoq_input_path) if f.endswith('.xlsx')]
+
+# Check that it is the latest one
+if len(excel_files) != 1:
+    raise ValueError("Expected exactly one Excel file in the directory. Found: " + ", ".join(excel_files))
+
+# Set path
+ifo_qoq_path = os.path.join(ifo_qoq_input_path, excel_files[0])
+
+## Load
+ifo_qoq_raw = pd.read_excel(
+    ifo_qoq_path,
+    sheet_name='BIP',
+    skiprows=2,      # skip first two rows
+    header=0         # now row 3 becomes the header (index 0 after skipping)
+)
+
+# Message 
+print(f"Loaded Excel file: {excel_files[0]}")
+
+
+
+# ==================================================================================================
+#  Rescale, drop all non-prediction values
+# ==================================================================================================
+
+## Set first column as index and drop empty columns
+ifo_qoq_raw.set_index(ifo_qoq_raw.columns[0], inplace=True)
+ifo_qoq_raw.dropna(axis=1, how='all', inplace=True)
+
+#show(ifo_qoq_raw)
+
+# --------------------------------------------------------------------------------------------------
+# Drop all values which are not predictions
+# --------------------------------------------------------------------------------------------------
+
+# Loop through columns and set entries to NaN if row date is >= 2 months older than column date
+for col in ifo_qoq_raw.columns:
+    too_old = ifo_qoq_raw.index <= (col - pd.DateOffset(months=2))
+    ifo_qoq_raw.loc[too_old, col] = pd.NA
+
+# Drop rows that are all NA
+ifo_qoq = ifo_qoq_raw.dropna(how='all')
+
+# show(ifo_qoq)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                        Store Output                                              #
+# =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
 
@@ -603,9 +679,9 @@ for output_dir_ts in [output_dir_ts, output_dir_ts_2]:
     first_release_yoy_gdp.to_excel(first_release_yoy_path, index=True)
 
 
-    # --------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------
     # Latest Release
-    # --------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------
 
     # Define file paths
     latest_release_path = os.path.join(output_dir_ts, 'latest_release_absolute_GDP.xlsx')
@@ -618,9 +694,9 @@ for output_dir_ts in [output_dir_ts, output_dir_ts_2]:
     latest_release_yoy_gdp.to_excel(latest_release_yoy_path, index=True)
 
 
-    # --------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------
     # Revision Data
-    # --------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------
 
     # Define file paths
     revision_path = os.path.join(output_dir_ts, 'revision_absolute_GDP.xlsx')
@@ -635,23 +711,19 @@ for output_dir_ts in [output_dir_ts, output_dir_ts_2]:
 
 
 
+# ==================================================================================================
+#  Quarterly ifo Forecasts
+# ==================================================================================================
 
+## Folder
+ifo_qoq_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_series')
+os.makedirs(output_dir_gdp, exist_ok=True)
 
-# -------------------------------------------------------------------------------------------------#
-# =================================================================================================#
-#                                   DATA PROCESSING - Forecasts                                    #
-# =================================================================================================#
-# -------------------------------------------------------------------------------------------------#
+## Define file paths
+ifo_qoq_output_path = os.path.join(ifo_qoq_output_dir, 'ifo_qoq_forecasts.xlsx')
 
-"""
-At this stage of the project, the input data here is already clean and does not require 
-Preprocessing. If this changes, this preprocessing may be added here.
-"""
-
-
-
-
-
+# Save files
+ifo_qoq.to_excel(ifo_qoq_output_path, index=True)   
 
 
 
