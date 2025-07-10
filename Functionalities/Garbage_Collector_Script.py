@@ -313,3 +313,55 @@ def save_processed_forecaster_output(df_qoq, qoq_forecast_df, qoq_forecast_index
     if 'AR_summary' in globals():
         filename_AR_summary = f'AR{AR_order}_{AR_horizon}_model_statistics.xlsx'
         AR_summary.to_excel(os.path.join(folder_path, filename_AR_summary))
+
+
+
+
+
+
+
+
+
+
+
+
+
+def create_qoq_evaluation_df(qoq_forecast_df, eval_vector):
+    """
+    For each column in qoq_forecast_df, create:
+    - an evaluation column matched by quarter to eval_vector
+    - a difference column (forecast - actual)
+    
+    Matching is done on quarterly frequency.
+    """
+    
+    # Ensure datetime and align to quarterly frequency
+    qoq_forecast_df = qoq_forecast_df.copy()
+    qoq_forecast_df.index = pd.to_datetime(qoq_forecast_df.index).to_period('Q').to_timestamp()
+    eval_vector = eval_vector.copy()
+    eval_vector.index = pd.to_datetime(eval_vector.index).to_period('Q').to_timestamp()
+
+    for col in qoq_forecast_df.columns:
+        # Create an empty Series for evaluations
+        eval_col = []
+
+        for date in qoq_forecast_df.index:
+            forecast_val = qoq_forecast_df.at[date, col]
+
+            if pd.notna(forecast_val):
+                # Try to get evaluation for the same quarter
+                eval_val = eval_vector.get(date, pd.NA)
+            else:
+                eval_val = pd.NA
+
+            eval_col.append(eval_val)
+
+        # Add evaluation column
+        eval_colname = f"{col}_eval"
+        qoq_forecast_df[eval_colname] = eval_col
+
+        # Add difference column
+        diff_colname = f"{col}_diff"
+        qoq_forecast_df[diff_colname] = qoq_forecast_df[col] - qoq_forecast_df[eval_colname]
+
+    return qoq_forecast_df

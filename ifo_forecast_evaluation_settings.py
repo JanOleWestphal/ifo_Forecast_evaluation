@@ -67,8 +67,8 @@ first_release_limit_quarter = 1            # 1,2,3 or 4; set as integer
 NOTE: Coosing a quarter other than 1 omits the entire year for YoY calculations
 """
 
-# Define whether to evaluate against first release (True) or latest release (False)
-against_first_release = True           # True or False
+# Define whether to match the dates of available ifo QoQ Forecasts for the naive forecaster
+match_ifo_naive_dates = True  # True or False
 
 
 
@@ -105,7 +105,7 @@ average_horizons = [2]
 
 
 # Set how far the agent predicts into the future; int, NO LIST ITERATION
-forecast_horizon = 20
+forecast_horizon = 9
 
 # Note on forecast_horizon:
 """

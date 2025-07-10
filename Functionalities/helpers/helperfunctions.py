@@ -62,13 +62,15 @@ def folder_clear(folder_path):
 # ==================================================================================================
 
 ## Filter columns: only keep columns >= first_release_limit_year/quarter
-def filter_first_release_limit(df):
+def filter_first_release_limit(df, 
+                               first_release_limit_year = settings.first_release_limit_year,
+                                first_release_limit_quarter = settings.first_release_limit_quarter):
 
     # Filter cols prior to first release limit
     col_mask = [
         (col.year > first_release_limit_year) or
         (col.year == first_release_limit_year and (col.quarter >= first_release_limit_quarter))
-        for col in df_qoq.columns
+        for col in df.columns
     ]
 
     # Apply filter
@@ -81,13 +83,15 @@ def filter_first_release_limit(df):
 
 
 ## Filter rows: only keep rows >= evaluation_limit_year/quarter
-def filter_evaluation_limit(df):
+def filter_evaluation_limit(df, 
+                                evaluation_limit_year = settings.evaluation_limit_year,
+                                evaluation_limit_quarter = settings.evaluation_limit_quarter):
 
     # Filter rows prior to evaluation limit
     row_mask = [
         (idx.year > evaluation_limit_year) or
         (idx.year == evaluation_limit_year and (idx.quarter >= evaluation_limit_quarter))
-        for idx in df_qoq.index
+        for idx in df.index
     ]
 
     # Apply
@@ -196,11 +200,16 @@ def get_yoy(df):
 # ==================================================================================================
 
 ## Helper function to load all Excel files in a folder into a dict of DataFrames
-def load_excels_to_dict(folder_path):
+def load_excels_to_dict(folder_path, strip_string=None):
     excel_files = glob.glob(os.path.join(folder_path, '*.xlsx'))
     dfs = {}
     for file in excel_files:
         name = os.path.splitext(os.path.basename(file))[0]
+        
+        # Strip the custom string if provided
+        if strip_string:
+            name = name.replace(strip_string, '')
+        
         dfs[name] = pd.read_excel(file, index_col=0)
     return dfs
 

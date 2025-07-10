@@ -19,6 +19,7 @@ import sys
 required_packages = [
     'requests',
     'openpyxl',
+    'XlsxWriter',
     'pandas',
     'pandasgui',
     'numpy',
