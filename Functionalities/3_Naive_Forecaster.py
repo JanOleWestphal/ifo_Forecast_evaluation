@@ -218,10 +218,13 @@ for folder in [base_path, folder_path,
 
 ## Clear
 if settings.clear_result_folders:
-    folder_clear(folder_path)
-    folder_clear(file_path_dt_qoq)
-    folder_clear(file_path_dt_yoy)
-    folder_clear(file_path_forecasts_yoy)
+
+    for folder in [folder_path, file_path_dt_qoq, file_path_dt_yoy,
+                   file_path_forecasts_qoq, file_path_forecasts_qoq_2, 
+                   file_path_forecasts_yoy, file_path_forecasts_yoy_2]:
+        
+        folder_clear(folder)
+
 
 
 
@@ -297,9 +300,11 @@ def prep_forecast_objects():
 
 
     # Clear workspace, if needed: 
+    """
     if 'AR_summary' in globals():
         del AR_summary
         # making sure that the AR- diagnostics table doesn't show up in other model outputs
+    """
 
     return qoq_forecast_df, qoq_forecast_index_df
 

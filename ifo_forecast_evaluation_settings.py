@@ -86,7 +86,7 @@ match_ifo_naive_dates = True  # True or False
 # --------------------------------------------------------------------------------------------------
 
 # Set the agent's forecasting method; options: 'AR', 'AVERAGE', 'SMA'
-models = ['AR']
+models = ['AR', 'AVERAGE', 'SMA']
 
 # For AR model: set number of lags (sugested: 2); list of int
 AR_orders = [2]
