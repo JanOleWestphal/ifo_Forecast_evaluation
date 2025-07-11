@@ -36,6 +36,7 @@ import glob
 import re
 from datetime import datetime, date
 from itertools import product
+from typing import Union, Dict, Optional
 
 
 # Import libraries
@@ -675,7 +676,7 @@ for name, df in naive_qoq_latest_eval_dfs_collapsed.items():
 ifo_qoq_forecasts_eval_first_full = create_qoq_evaluation_df(ifo_qoq_forecasts_full, qoq_first_eval)
 ifo_qoq_forecasts_eval_first_collapsed_full = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_first_full)
 
-#show(ifo_qoq_forecasts_eval_first_collapsed)
+#show(ifo_qoq_forecasts_eval_first_full)
 
 ## Evalaute against Latest Release
 ifo_qoq_forecasts_eval_latest_full = create_qoq_evaluation_df(ifo_qoq_forecasts_full, qoq_latest_eval)
@@ -796,9 +797,434 @@ print("Visualizing error statistics ...  \n")
 # Error Time Series
 # --------------------------------------------------------------------------------------------------
 
+def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
+                             figsize=(12, 8), linestyle='-', linewidth=1.5, evaluation_legend_name='Realized Values',
+                             show=False, save_path=None, save_name_prefix=None, select_quarters=None):
+    """
+    Create time series plots comparing forecast horizons across multiple DataFrames.
+    
+    Parameters:
+    -----------
+    *args : DataFrame or dict
+        Variable number of DataFrames or dictionaries containing DataFrames
+    df_eval : pd.DataFrame
+        1D datetime-indexed DataFrame serving as evaluation/ground truth
+    title_prefix : str, optional
+        Prefix for plot titles
+    figsize : tuple, default (12, 8)
+        Figure size (width, height)
+    show : bool, default False
+        Whether to display plots
+    save_path : str, optional
+        Path to save figures
+    save_name_prefix : str, optional
+        Prefix for saved figure names
+    select_quarters : list, optional
+        List of quarter indices to display (e.g., [0,1,2,3,4,6,9])
+        If None, displays all quarters Q0-Q9
+    
+    Returns:
+    --------
+    dict: Dictionary containing all created figures
+    """
+    
+    # Collect all DataFrames and their names
+    dfs_to_plot = []
+    
+    for arg in args:
+        if isinstance(arg, dict):
+            # If it's a dictionary, add all DataFrames in it
+            for name, df in arg.items():
+                dfs_to_plot.append((name, df))
+        elif isinstance(arg, pd.DataFrame):
+            # If it's a DataFrame, assume it's the ifo forecast
+            dfs_to_plot.append(('ifo', arg))
+        else:
+            raise ValueError("Arguments must be DataFrames or dictionaries containing DataFrames")
+    
+    # Process each DataFrame to create Q0-Q9 time series
+    processed_dfs = {}
+    
+    for name, df in dfs_to_plot:
+        # Filter columns: keep timestamp columns, drop _diff and _eval columns
+        timestamp_cols = []
+        for col in df.columns:
+            if not (col.endswith('_diff') or col.endswith('_eval')):
+                try:
+                    # Try to convert to datetime to verify it's a timestamp column
+                    pd.to_datetime(col)
+                    timestamp_cols.append(col)
+                except (ValueError, TypeError):
+                    # Skip non-timestamp columns
+                    continue
+        
+        if not timestamp_cols:
+            print(f"Warning: No valid timestamp columns found in DataFrame '{name}'")
+            continue
+        
+        # Convert column names to datetime for proper sorting
+        timestamp_cols_dt = [(col, pd.to_datetime(col)) for col in timestamp_cols]
+        timestamp_cols_dt.sort(key=lambda x: x[1])  # Sort by datetime
+        timestamp_cols = [col for col, _ in timestamp_cols_dt]
+        
+        # Pre-allocate Q0-Q9 DataFrames to prevent fragmentation
+        q_dfs = {}
+        for q in range(10):
+            q_dfs[f'Q{q}'] = pd.DataFrame(index=pd.DatetimeIndex([]), columns=['value'], dtype=float)
+        
+        # Process each timestamp column
+        for col in timestamp_cols:
+            series = df[col].dropna()  # Remove NA values
+            col_datetime = pd.to_datetime(col)
+            
+            # Assign each non-NA value to the corresponding Q dataframe
+            for i, (idx, value) in enumerate(series.items()):
+                if i < 10:  # Only process first 10 non-NA values (Q0-Q9)
+                    q_key = f'Q{i}'
+                    # Calculate target date: index date + forecast horizon
+                    target_date = idx + pd.DateOffset(months=3*i)  # Quarterly offset
+                    
+                    # Create new row and append to avoid fragmentation
+                    new_row = pd.DataFrame({'value': [value]}, index=[target_date])
+                    q_dfs[q_key] = pd.concat([q_dfs[q_key], new_row])
+        
+        # Sort indices and remove duplicates
+        for q in range(10):
+            q_key = f'Q{q}'
+            if not q_dfs[q_key].empty:
+                q_dfs[q_key] = q_dfs[q_key].sort_index()
+                q_dfs[q_key] = q_dfs[q_key][~q_dfs[q_key].index.duplicated(keep='first')]
+        
+        processed_dfs[name] = q_dfs
+    
+    # Create color palette
+    def get_color_palette(n_series):
+        """Generate colors for Q0-Q9 series"""
+        if n_series <= 10:
+            # Use a colormap for Q0-Q9
+            cmap = plt.get_cmap("tab10")
+            return [cmap(i) for i in range(n_series)]
+        else:
+            # Use viridis for more series
+            cmap = plt.get_cmap("viridis")
+            return [cmap(i/n_series) for i in range(n_series)]
+    
+    figures = {}
+    
+    # Determine overall date range: Prefer earliest Q0 from 'ifo', fallback to global minimum
+    ifo_q0_start = None
+    global_q0_start = None
+
+    for name, q_dfs in processed_dfs.items():
+        if 'Q0' in q_dfs and not q_dfs['Q0'].empty:
+            q0_start = q_dfs['Q0'].index.min()
+            # Check for 'ifo'
+            if name.lower() == 'ifo':
+                ifo_q0_start = q0_start
+            if global_q0_start is None or q0_start < global_q0_start:
+                global_q0_start = q0_start
+
+    # Prioritise ifo-based starting date if available
+    earliest_start = ifo_q0_start if ifo_q0_start is not None else global_q0_start
+
+    # ———— Apply the cut‑off to every Q‑series ————
+    if earliest_start is not None:
+        for name, q_dfs in processed_dfs.items():
+            for q_key, q_df in q_dfs.items():
+                # only keep dates ≥ earliest_start
+                if not q_df.empty:
+                    q_dfs[q_key] = q_df[q_df.index >= earliest_start]
+    
+    # Filter evaluation data to start from earliest Q0 date
+    eval_filtered = None
+    if df_eval is not None and earliest_start is not None:
+        eval_filtered = df_eval[df_eval.index >= earliest_start]
+    elif df_eval is not None:
+        eval_filtered = df_eval
+    
+    # Determine which quarters to plot
+    quarters_to_plot = list(range(10)) if select_quarters is None else select_quarters
+    
+    # Plot 1: For each input DataFrame, plot all Q0-Q9 against evaluation
+    for name, q_dfs in processed_dfs.items():
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Plot evaluation data first (if provided)
+        if eval_filtered is not None:
+            ax.plot(eval_filtered.index, eval_filtered.iloc[:, 0], 
+                   color='black', linewidth=2, label=evaluation_legend_name, alpha=0.8)
+        
+        # Plot Q0-Q9 series (only selected quarters)
+        colors = get_color_palette(len(quarters_to_plot))
+        color_idx = 0
+        for q in quarters_to_plot:
+            q_key = f'Q{q}'
+            if q_key in q_dfs and not q_dfs[q_key].empty:
+                ax.plot(q_dfs[q_key].index, q_dfs[q_key]['value'], 
+                       color=colors[color_idx], marker='o', linewidth=linewidth, linestyle=linestyle,
+                       markersize=4, label=q_key, alpha=0.7)
+                color_idx += 1
+        
+        # Customize plot
+        #ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('QoQ GDP Growth', fontsize=12)
+        plot_title = f'{title_prefix} - {name} Predictions vs Realized Values' if title_prefix else f'{name} Predictions vs Realized Values'
+        ax.set_title(plot_title, fontsize=14)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        if show:
+            plt.show()
+        
+        # Save figure
+        if save_path and save_name_prefix:
+            save_name = f"{save_name_prefix}_{name}_horizons.png"
+            fig.savefig(os.path.join(save_path, save_name), dpi=300, bbox_inches='tight')
+        
+        figures[f'{name}_horizons'] = fig
+    
+    # Plot 2: For each Q0-Q9, plot across all input DataFrames (only selected quarters)
+    for q in quarters_to_plot:
+        q_key = f'Q{q}'
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Plot evaluation data first (if provided)
+        if eval_filtered is not None:
+            ax.plot(eval_filtered.index, eval_filtered.iloc[:, 0], 
+                   color='black', linewidth=2, label=evaluation_legend_name, alpha=0.8)
+        
+        # Plot Q series from each DataFrame
+        colors = get_color_palette(len(processed_dfs))
+        for i, (name, q_dfs) in enumerate(processed_dfs.items()):
+            if q_key in q_dfs and not q_dfs[q_key].empty:
+                # Create legend label
+                if 'ifo' in name.lower():
+                    legend_label = f'ifo {q_key} ahead'
+                elif any(tag in name.lower() for tag in ['ar', 'sma', 'average']):
+                    # Strip trailing underscore + number
+                    legend_label = f"{re.sub(r'_\d+$', '', name)} {q_key} ahead"
+                else:
+                    legend_label = name
+                
+                ax.plot(q_dfs[q_key].index, q_dfs[q_key]['value'], 
+                       color=colors[i], marker='o', linewidth=linewidth, linestyle=linestyle,
+                       markersize=4, label=legend_label, alpha=0.7)
+        
+        # Customize plot
+        #ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('QoQ GDP Growth', fontsize=12)
+        plot_title = f'{title_prefix} - {q_key} Forecasts vs. Realized Values' if title_prefix else f'{q_key} Forecasts vs. Realized Values'
+        ax.set_title(plot_title, fontsize=14)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        if show:
+            plt.show()
+        
+        # Save figure
+        if save_path and save_name_prefix:
+            save_name = f"{save_name_prefix}_{q_key}_comparison.png"
+            fig.savefig(os.path.join(save_path, save_name), dpi=300, bbox_inches='tight')
+        
+        figures[f'{q_key}_comparison'] = fig
+    
+    # Plot 3: Combined plot showing all selected quarters from all DataFrames
+    if len(quarters_to_plot) > 0:
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Plot evaluation data first (if provided)
+        if eval_filtered is not None:
+            ax.plot(eval_filtered.index, eval_filtered.iloc[:, 0], 
+                   color='black', linewidth=3, label=evaluation_legend_name, alpha=0.9)
+        
+        # Create color palette for combinations of DataFrames and quarters
+        total_series = len(processed_dfs) * len(quarters_to_plot)
+        colors = get_color_palette(total_series)
+        
+        color_idx = 0
+        for name, q_dfs in processed_dfs.items():
+            # Create base legend label
+            if 'ifo' in name.lower():
+                base_label = 'ifo'
+            elif any(tag in name.lower() for tag in ['ar', 'sma', 'average']):
+                base_label = re.sub(r'_\d+$', '', name)
+            else:
+                base_label = name
+            
+            for q in quarters_to_plot:
+                q_key = f'Q{q}'
+                if q_key in q_dfs and not q_dfs[q_key].empty:
+                    label = f'{base_label}-{q_key}'
+                    ax.plot(q_dfs[q_key].index, q_dfs[q_key]['value'], 
+                           color=colors[color_idx], marker='o', linewidth=linewidth, linestyle=linestyle,
+                           markersize=3, label=label, alpha=0.7)
+                    color_idx += 1
+        
+        # Customize plot
+        #ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('QoQ GDP Growth', fontsize=12)
+        plot_title = f'{title_prefix} - All Selected Quarters' if title_prefix else 'All Selected Quarters'
+        ax.set_title(plot_title, fontsize=14)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        if show:
+            plt.show()
+        
+        # Save figure
+        if save_path and save_name_prefix:
+            save_name = f"{save_name_prefix}_all_selected_quarters.png"
+            fig.savefig(os.path.join(save_path, save_name), dpi=300, bbox_inches='tight')
+        
+        figures['all_selected_quarters'] = fig
+    
+    return figures
 
 
 
+# --------------------------------------------------------------------------------------------------
+# Error Distribution Plots
+# --------------------------------------------------------------------------------------------------
+
+def plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8),
+                       n_bars: int = 10, show: bool = False,
+                       save_path: Optional[str] = None, save_name: Optional[str] = None):
+    """
+    Create a plot with vertical lines for columns Q0-Q9, where each value is plotted as a point.
+    
+    Parameters:
+    -----------
+    *args : DataFrame or dict of DataFrames
+        Input data containing columns Q0-Q9
+    title : str, optional
+        Plot title
+    figsize : tuple, default (12, 8)
+        Figure size (width, height)
+    n_bars : int, default 10
+        Number of vertical lines (should match Q0-Q9 columns)
+    show : bool, default False
+        Whether to display the plot
+    save_path : str, optional
+        Directory path to save the plot
+    save_name : str, optional
+        Filename for saving the plot
+    """
+    
+    # Collect all dataframes
+    dfs = []
+    df_names = []
+    
+    for arg in args:
+        if isinstance(arg, pd.DataFrame):
+            dfs.append(arg)
+            df_names.append(f"ifo Forecast")
+        elif isinstance(arg, dict):
+            for name, df in arg.items():
+                if isinstance(df, pd.DataFrame):
+                    dfs.append(df)
+                    df_names.append(name)
+        else:
+            raise ValueError(f"Unsupported input type: {type(arg)}. Expected DataFrame or dict of DataFrames.")
+    
+    if not dfs:
+        raise ValueError("No valid DataFrames found in input arguments.")
+    
+    # Expected columns
+    q_cols = [f'Q{i}' for i in range(min(n_bars, 10))]
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    ## Color pallete
+    cmap = plt.get_cmap("Oranges")
+    colors = []
+    
+    # Count non-ifo entries for color scaling
+    non_ifo_count = sum(1 for name in df_names if 'ifo' not in name.lower())
+    non_ifo_idx = 0
+    
+    for name in df_names:
+        if 'ifo' in name.lower():
+            colors.append('#003366')  # dark blue for ifo
+        else:
+            # Sample from the dark end of orange colormap (0.7 to 1.0 range)
+            color_val = 0.7 + 0.3 * non_ifo_idx / max(1, non_ifo_count - 1)
+            color = cmap(color_val)
+            colors.append(mcolors.to_hex(color))
+            non_ifo_idx += 1
+    
+    # Plot data for each dataframe
+    for df_idx, (df, df_name) in enumerate(zip(dfs, df_names)):
+        # Check which Q columns exist in this dataframe
+        available_cols = [col for col in q_cols if col in df.columns]
+        
+        if not available_cols:
+            print(f"Warning: No Q columns found in {df_name}")
+            continue
+        
+       # Plot each column's values
+        for col_idx, col in enumerate(available_cols):
+            if col in df.columns:
+                # Get non-null values
+                values = df[col].dropna()
+                
+                # X position for this column (with slight offset for multiple dataframes)
+                x_pos = col_idx + (df_idx - len(dfs)/2 + 0.5) * 0.1
+                
+                # Add jitter to x-position to show overlapping points
+                x_jitter = np.random.normal(0, 0.02, len(values))
+                
+                # Plot points with jitter
+                ax.scatter([x_pos] * len(values) + x_jitter, values, 
+                          color=colors[df_idx], alpha=0.7, s=25, 
+                          edgecolors='white', linewidths=0.5,
+                          label=f"{df_name}" if col_idx == 0 else "")
+                
+
+    # Draw vertical lines
+    for i in range(len(q_cols)):
+        ax.axvline(x=i, color='gray', linestyle='--', alpha=0.3, linewidth=1)
+    
+    # Customize plot
+    ax.set_xlabel('Forecast Horizon', fontsize=12)
+    ax.set_ylabel('Error in p.p.', fontsize=12)
+    ax.set_title(title if title else 'Distribution of Forecast Errors by Horizon', fontsize=14)
+
+    # Set visual marker at 0
+    ax.axhline(0, color='#1B263B', linewidth=1, linestyle='--', alpha=1)
+    
+    # Set x-axis
+    ax.set_xticks(range(len(q_cols)))
+    ax.set_xticklabels(q_cols)
+    ax.set_xlim(-0.5, len(q_cols) - 0.5)
+    
+    # Add legend if multiple dataframes
+    if len(dfs) > 1:
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    # Add grid
+    ax.grid(True, alpha=0.3)
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save plot if specified
+    if save_path and save_name:
+        import os
+        full_path = os.path.join(save_path, save_name)
+        plt.savefig(full_path, dpi=300, bbox_inches='tight')
+    
+    # Show plot if specified
+    if show:
+        plt.show()
+    
+    return fig, ax
 
 
 
@@ -878,8 +1304,7 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
     x_positions = np.arange(len(quarters))
     bar_width = 0.8 / len(dfs_to_plot)
     
-    # Color palette
-
+    ## Color palette
     # Generate warm colour gradient for dictionary entries
     n_dict_entries = len(dfs_to_plot) - 1  # minus the ifo
     # Get a darker part of the orange colormap
@@ -896,6 +1321,7 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
             color = cmap(0.7 + 0.3 * i / max(1, n_entries - 1))  # 0.7 to 1 range
             colors.append(mcolors.to_hex(color))
     
+
     # Plot bars for each DataFrame
     for i, (name, df) in enumerate(dfs_to_plot):
         # Filter to Q0-Q9 rows that exist in the DataFrame
@@ -956,7 +1382,11 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
     if save_path is not None and save_name is not None:
         fig.savefig(os.path.join(save_path, save_name), dpi=300, bbox_inches='tight')
     
+    plt.close()
+    
     return fig, ax
+
+
 
 
 
@@ -985,10 +1415,71 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
 # Error Time Series
 # --------------------------------------------------------------------------------------------------
 
+## Savepaths
+
+# ifo
+first_eval_error_series_path = os.path.join(graph_folder, '1_QoQ_Error_Series', '0_First_Evaluation')
+latest_eval_error_series_path = os.path.join(graph_folder, '1_QoQ_Error_Series', '1_Latest_Evaluation')
+
+os.makedirs(first_eval_error_series_path, exist_ok=True)
+os.makedirs(latest_eval_error_series_path, exist_ok=True)
+
+# Naive
+
+
+## Create and Save Plots
+"""
+plot_forecast_timeseries(*args, df_eval=None, title_prefix=None, figsize=(12, 8), 
+                             show=False, save_path=None, save_name_prefix=None, select_quarters=None)
+"""
+
+plot_forecast_timeseries(ifo_qoq_forecasts_eval_first, naive_qoq_first_eval_dfs, df_eval=qoq_first_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
+                             show=False, save_path=first_eval_error_series_path, save_name_prefix=None, select_quarters=None)
+
+
+plot_forecast_timeseries(ifo_qoq_forecasts_eval_latest, naive_qoq_latest_eval_dfs, df_eval=qoq_latest_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
+                             show=False, save_path=latest_eval_error_series_path, save_name_prefix='Latest_Eval_', select_quarters=None)
 
 
 
 
+
+# --------------------------------------------------------------------------------------------------
+# Error Scatter Plots
+# --------------------------------------------------------------------------------------------------
+
+## Savepaths
+first_eval_error_line_path = os.path.join(graph_folder, '1_QoQ_Error_Scatter', '0_First_Evaluation')
+latest_eval_error_line_path = os.path.join(graph_folder, '1_QoQ_Error_Scatter', '1_Latest_Evaluation')
+
+os.makedirs(first_eval_error_line_path, exist_ok=True)
+os.makedirs(latest_eval_error_line_path, exist_ok=True)
+
+
+## Create and Save Plots
+
+# First Evaluation
+plot_error_lines(ifo_qoq_errors_first, 
+                  show=False, 
+                  save_path=first_eval_error_line_path,
+                  save_name=f'ifo_QoQ_First_Eval_Error_Scatter.png')
+
+plot_error_lines(ifo_qoq_errors_first, naive_qoq_first_eval_error_series_dict,
+                  show=False, 
+                  save_path=first_eval_error_line_path,
+                  save_name=f'Joint_QoQ_First_Eval_Error_Scatter.png')
+                 
+
+# Latest Evaluation
+plot_error_lines(ifo_qoq_errors_latest, 
+                  show=False, 
+                  save_path=latest_eval_error_line_path,
+                  save_name=f'ifo_QoQ_Latest_Eval_Error_Scatter.png')
+
+plot_error_lines(ifo_qoq_errors_latest, naive_qoq_latest_eval_error_series_dict,
+                  show=False, 
+                  save_path=latest_eval_error_line_path,
+                  save_name=f'Joint_QoQ_Latest_Eval_Error_Scatter.png')
 
 
 

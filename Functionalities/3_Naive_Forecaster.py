@@ -289,25 +289,40 @@ Defines the naive forecast estimation workflow in order to make the for-loop  be
 # ==================================================================================================
 # PREPARE THE REGRESSION: creating DFs to store results
 # ==================================================================================================
-
-def prep_forecast_objects():
-
-    # Create prediction dataframe: forecast_horizon x n_cols
-    qoq_forecast_df = pd.DataFrame()
-
-    # Create an indexed dictionary of the predictions
+def prep_forecast_objects(df_qoq, forecast_horizon):
+    """
+    Prepare forecast objects with pre-allocated structure to prevent fragmentation.
+    
+    Parameters:
+    -----------
+    df_qoq : pd.DataFrame
+        The quarterly data DataFrame containing the columns to forecast
+    forecast_horizon : int
+        Number of periods to forecast ahead
+    
+    Returns:
+    --------
+    tuple: (qoq_forecast_df, qoq_forecast_index_df)
+    """
+    # Pre-allocate prediction dataframe with known dimensions
+    # This prevents fragmentation by creating the full structure upfront
+    qoq_forecast_df = pd.DataFrame(
+        index=range(forecast_horizon),
+        columns=df_qoq.columns,
+        dtype=float  # Specify dtype for better memory efficiency
+    )
+    
+    # Create indexed dictionary of predictions
     qoq_forecast_index_df = pd.DataFrame(columns=['date_of_forecast', 'target_date', 'predicted_qoq'])
-
-
-    # Clear workspace, if needed: 
+    
+    # Clear workspace, if needed:
     """
     if 'AR_summary' in globals():
         del AR_summary
         # making sure that the AR- diagnostics table doesn't show up in other model outputs
     """
-
+    
     return qoq_forecast_df, qoq_forecast_index_df
-
 
 
 
@@ -905,10 +920,6 @@ for model in models:
             ## Start Execution in the inner loop
             print(f""" Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, predicting present and forecasting {forecast_horizon-1} quarters into the future ... \n""")
 
-            ## Prepare the forecasting
-            qoq_forecast_df, qoq_forecast_index_df = prep_forecast_objects()
-
-
             ## Get the models
             #Create the summary statistic df
             AR_summary = pd.DataFrame()
@@ -970,7 +981,7 @@ for model in models:
             print(f""" Calculating forecasts as a simple moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ... \n""")
       
             ## Prepare the forecasting
-            qoq_forecast_df, qoq_forecast_index_df = prep_forecast_objects()
+            qoq_forecast_df, qoq_forecast_index_df = prep_forecast_objects(df_qoq, forecast_horizon)
 
 
             # Iterate over all quarterly datapoints 
@@ -1021,7 +1032,7 @@ for model in models:
 
             
             ## Prepare the forecasting
-            qoq_forecast_df, qoq_forecast_index_df = prep_forecast_objects()
+            qoq_forecast_df, qoq_forecast_index_df = prep_forecast_objects(df_qoq, forecast_horizon)
 
 
             # Iterate over all quarterly datapoints 

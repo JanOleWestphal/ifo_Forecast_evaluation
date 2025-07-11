@@ -365,3 +365,202 @@ def create_qoq_evaluation_df(qoq_forecast_df, eval_vector):
         qoq_forecast_df[diff_colname] = qoq_forecast_df[col] - qoq_forecast_df[eval_colname]
 
     return qoq_forecast_df
+
+
+
+
+def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None, figsize=(12, 8), 
+                             show=False, save_path=None, save_name_prefix=None):
+    """
+    Create time series plots comparing forecast horizons across multiple DataFrames.
+    
+    Parameters:
+    -----------
+    *args : DataFrame or dict
+        Variable number of DataFrames or dictionaries containing DataFrames
+    df_eval : pd.DataFrame
+        1D datetime-indexed DataFrame serving as evaluation/ground truth
+    title_prefix : str, optional
+        Prefix for plot titles
+    figsize : tuple, default (12, 8)
+        Figure size (width, height)
+    show : bool, default False
+        Whether to display plots
+    save_path : str, optional
+        Path to save figures
+    save_name_prefix : str, optional
+        Prefix for saved figure names
+    
+    Returns:
+    --------
+    dict: Dictionary containing all created figures
+    """
+    
+    # Collect all DataFrames and their names
+    dfs_to_plot = []
+    
+    for arg in args:
+        if isinstance(arg, dict):
+            # If it's a dictionary, add all DataFrames in it
+            for name, df in arg.items():
+                dfs_to_plot.append((name, df))
+        elif isinstance(arg, pd.DataFrame):
+            # If it's a DataFrame, assume it's the ifo forecast
+            dfs_to_plot.append(('ifo', arg))
+        else:
+            raise ValueError("Arguments must be DataFrames or dictionaries containing DataFrames")
+    
+    # Process each DataFrame to create Q0-Q9 time series
+    processed_dfs = {}
+    
+    for name, df in dfs_to_plot:
+        # Filter columns: keep timestamp columns, drop _diff and _eval columns
+        timestamp_cols = []
+        for col in df.columns:
+            if not (col.endswith('_diff') or col.endswith('_eval')):
+                try:
+                    # Try to convert to datetime to verify it's a timestamp column
+                    pd.to_datetime(col)
+                    timestamp_cols.append(col)
+                except (ValueError, TypeError):
+                    # Skip non-timestamp columns
+                    continue
+        
+        if not timestamp_cols:
+            print(f"Warning: No valid timestamp columns found in DataFrame '{name}'")
+            continue
+        
+        # Convert column names to datetime for proper sorting
+        timestamp_cols_dt = [(col, pd.to_datetime(col)) for col in timestamp_cols]
+        timestamp_cols_dt.sort(key=lambda x: x[1])  # Sort by datetime
+        timestamp_cols = [col for col, _ in timestamp_cols_dt]
+        
+        # Pre-allocate Q0-Q9 DataFrames to prevent fragmentation
+        q_dfs = {}
+        for q in range(10):
+            q_dfs[f'Q{q}'] = pd.DataFrame(index=pd.DatetimeIndex([]), columns=['value'], dtype=float)
+        
+        # Process each timestamp column
+        for col in timestamp_cols:
+            series = df[col].dropna()  # Remove NA values
+            col_datetime = pd.to_datetime(col)
+            
+            # Assign each non-NA value to the corresponding Q dataframe
+            for i, (idx, value) in enumerate(series.items()):
+                if i < 10:  # Only process first 10 non-NA values (Q0-Q9)
+                    q_key = f'Q{i}'
+                    # Calculate target date: index date + forecast horizon
+                    target_date = idx + pd.DateOffset(months=3*i)  # Quarterly offset
+                    
+                    # Create new row and append to avoid fragmentation
+                    new_row = pd.DataFrame({'value': [value]}, index=[target_date])
+                    q_dfs[q_key] = pd.concat([q_dfs[q_key], new_row])
+        
+        # Sort indices and remove duplicates
+        for q in range(10):
+            q_key = f'Q{q}'
+            if not q_dfs[q_key].empty:
+                q_dfs[q_key] = q_dfs[q_key].sort_index()
+                q_dfs[q_key] = q_dfs[q_key][~q_dfs[q_key].index.duplicated(keep='first')]
+        
+        processed_dfs[name] = q_dfs
+    
+    # Create color palette
+    def get_color_palette(n_series):
+        """Generate colors for Q0-Q9 series"""
+        if n_series <= 10:
+            # Use a colormap for Q0-Q9
+            cmap = plt.get_cmap("tab10")
+            return [cmap(i) for i in range(n_series)]
+        else:
+            # Use viridis for more series
+            cmap = plt.get_cmap("viridis")
+            return [cmap(i/n_series) for i in range(n_series)]
+    
+    figures = {}
+    
+    # Plot 1: For each input DataFrame, plot all Q0-Q9 against evaluation
+    for name, q_dfs in processed_dfs.items():
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Plot evaluation data first (if provided)
+        if df_eval is not None:
+            ax.plot(df_eval.index, df_eval.iloc[:, 0], 
+                   color='black', linewidth=2, label='Evaluation', alpha=0.8)
+        
+        # Plot Q0-Q9 series
+        colors = get_color_palette(10)
+        for i, (q_key, q_df) in enumerate(q_dfs.items()):
+            if not q_df.empty:
+                ax.plot(q_df.index, q_df['value'], 
+                       color=colors[i], marker='o', linewidth=1.5, 
+                       markersize=4, label=q_key, alpha=0.7)
+        
+        # Customize plot
+        ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('Value', fontsize=12)
+        plot_title = f'{title_prefix} - {name} Forecast Horizons' if title_prefix else f'{name} Forecast Horizons'
+        ax.set_title(plot_title, fontsize=14)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        if show:
+            plt.show()
+        
+        # Save figure
+        if save_path and save_name_prefix:
+            save_name = f"{save_name_prefix}_{name}_horizons.png"
+            fig.savefig(os.path.join(save_path, save_name), dpi=300, bbox_inches='tight')
+        
+        figures[f'{name}_horizons'] = fig
+    
+    # Plot 2: For each Q0-Q9, plot across all input DataFrames
+    for q in range(10):
+        q_key = f'Q{q}'
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Plot evaluation data first (if provided)
+        if df_eval is not None:
+            ax.plot(df_eval.index, df_eval.iloc[:, 0], 
+                   color='black', linewidth=2, label='Evaluation', alpha=0.8)
+        
+        # Plot Q series from each DataFrame
+        colors = get_color_palette(len(processed_dfs))
+        for i, (name, q_dfs) in enumerate(processed_dfs.items()):
+            if q_key in q_dfs and not q_dfs[q_key].empty:
+                # Create legend label
+                if 'ifo' in name.lower():
+                    legend_label = 'ifo'
+                elif any(tag in name.lower() for tag in ['ar', 'sma', 'average']):
+                    # Strip trailing underscore + number
+                    legend_label = re.sub(r'_\d+$', '', name)
+                else:
+                    legend_label = name
+                
+                ax.plot(q_dfs[q_key].index, q_dfs[q_key]['value'], 
+                       color=colors[i], marker='o', linewidth=1.5, 
+                       markersize=4, label=legend_label, alpha=0.7)
+        
+        # Customize plot
+        ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('Value', fontsize=12)
+        plot_title = f'{title_prefix} - {q_key} Comparison' if title_prefix else f'{q_key} Comparison'
+        ax.set_title(plot_title, fontsize=14)
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        if show:
+            plt.show()
+        
+        # Save figure
+        if save_path and save_name_prefix:
+            save_name = f"{save_name_prefix}_{q_key}_comparison.png"
+            fig.savefig(os.path.join(save_path, save_name), dpi=300, bbox_inches='tight')
+        
+        figures[f'{q_key}_comparison'] = fig
+    
+    return figures

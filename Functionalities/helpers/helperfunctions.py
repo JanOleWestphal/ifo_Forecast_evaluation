@@ -188,7 +188,7 @@ def get_yoy(df):
     # Calculate YoY growth rates
     df_out = df_out.pct_change(fill_method=None) * 100
 
-    print(" Calculating year over year changes (relative to previous year)... \n")
+    print(" Calculating year over year changes (relative to previous year)... \n \n")
 
     return df_out
 
