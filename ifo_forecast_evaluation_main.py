@@ -136,14 +136,14 @@ else:
 
 
 # ==================================================================================================
-# PERFORMANCE EVALUATION and OUTPUT
+# ifoCAST EVALUATION and OUTPUT
 # ==================================================================================================
-"""
-if settings.run_evaluation:
-    execute_script('x_Evaluation_and_Output_old.py')
+if settings.run_ifoCAST_evaluation:
+    execute_script('5_ifoCAST_Evaluation.py')
 else: 
     print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
-"""
+
+
 
 print('\nifo Forecast Evaluation completed successfully! \n')
 
@@ -154,3 +154,14 @@ print('\nifo Forecast Evaluation completed successfully! \n')
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
+
+
+"""
+# ==================================================================================================
+# PERFORMANCE EVALUATION and OUTPUT
+# ==================================================================================================
+if settings.run_evaluation:
+    execute_script('x_Evaluation_and_Output_old.py')
+else: 
+    print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
+"""

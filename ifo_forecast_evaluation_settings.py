@@ -32,6 +32,9 @@ run_naive_forecaster = True  # True or False
 # 4.: Decide whether to run the quarterly evaluation output module
 run_quarterly_evaluation = True  # True or False
 
+# 5.: Decide whether to run the ifoCAST evaluation module
+run_ifoCAST_evaluation = True  # True or False
+
 
 ## Decide whether to overwrite previous output (always overwriten if same functionality is executed)
 clear_result_folders = True   # True or False
