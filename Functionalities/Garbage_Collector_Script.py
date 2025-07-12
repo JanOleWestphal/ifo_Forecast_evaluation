@@ -564,3 +564,112 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None, figsize=(12
         figures[f'{q_key}_comparison'] = fig
     
     return figures
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    """
+    Matches forecast_df to eval_df by quarter, creating *_eval and *_diff columns.
+    Uses np.nan as the missing placeholder so that all columns end up float64.
+    """
+    # 1) Copy & datetime‐index
+    forecast = forecast_df.copy()
+    eval_     = eval_df.copy()
+    forecast.index = pd.to_datetime(forecast.index)
+    eval_.index    = pd.to_datetime(eval_.index)
+
+    # 2) Extract & coerce eval series to numeric (float64 + np.nan)
+    eval_ser = pd.to_numeric(eval_.iloc[:, 0], errors='coerce')
+
+    # 3) Coerce all forecast columns to numeric float64
+    forecast = forecast.apply(pd.to_numeric, errors='coerce')
+
+    result = pd.DataFrame(index=forecast.index)
+
+    for col in forecast.columns:
+        # Determine how to shift index
+        if 'Qminus1' in col:
+            targets = forecast.index - QuarterBegin(startingMonth=1)
+        elif 'Q1' in col:
+            targets = forecast.index + QuarterBegin(startingMonth=1)
+        else:  # Q0
+            targets = forecast.index
+
+        # 4) Build the matched Series with np.nan defaults
+        matched = pd.Series(
+            [
+                float(eval_ser.loc[d]) if d in eval_ser.index and not isinstance(eval_ser.loc[d], (list, np.ndarray, pd.Series))
+                else float(eval_ser.loc[d][0]) if d in eval_ser.index and isinstance(eval_ser.loc[d], (list, np.ndarray, pd.Series)) and len(eval_ser.loc[d]) > 0
+                else np.nan
+                for d in targets
+            ],
+            index=forecast.index,
+            dtype=float
+        )
+
+        # 5) Assign the eval and diff columns
+        result[f'{col}_eval'] = matched.values  # ensure scalar values
+        result[f'{col}_diff'] = forecast[col].values - matched.values  # ensure scalar values
+
+    return result.T
+
+
+
+"""
+def get_ifoCAST_differences(forecast_df: pd.DataFrame, eval_df: pd.DataFrame) -> pd.DataFrame:
+    
+    For each timestamp in forecast_df, match evaluation values from eval_df based on
+    quarters (previous quarter, same quarter, next quarter), and compute
+    differences between forecast values and their corresponding quarterly evaluation.
+
+    Parameters:
+    - forecast_df: DataFrame with a DatetimeIndex and one or more forecast columns.
+    - eval_df: DataFrame or Series with a DatetimeIndex and a single evaluation column.
+
+    Returns:
+    - DataFrame: A copy of forecast_df with added columns:
+        * Qminus1_eval, Q0_eval, Q1_eval: evaluation values for prev, current, next quarter
+        * {orig_col}_Qminus1_diff, {orig_col}_Q0_diff, {orig_col}_Q1_diff for each original forecast column
+    
+    # Copy original forecasts
+    forecast = forecast_df.copy()
+
+    # Preserve original forecast column names
+    orig_cols = list(forecast_df.columns)
+
+    # Prepare evaluation series
+    eval_series = eval_df.squeeze()
+    eval_series.index = pd.to_datetime(eval_series.index)
+
+    # Convert indices to quarterly periods
+    eval_per = eval_series.copy()
+    eval_per.index = eval_per.index.to_period('Q')
+
+    forecast_idx = pd.to_datetime(forecast.index)
+    forecast_per = forecast_idx.to_period('Q')
+
+    # Align evaluation for each quarter offset
+    forecast['Qminus1_eval'] = eval_per.reindex(forecast_per - 1).values
+    forecast['Q0_eval']       = eval_per.reindex(forecast_per).values
+    forecast['Q1_eval']       = eval_per.reindex(forecast_per + 1).values
+
+    # Compute diffs: forecast- evalautio
+    forecast["Qminus1_diff"] = forecast['Qminus1'] - forecast['Qminus1_eval'] 
+    forecast["Q0_diff"]       = forecast['Q0'] -  forecast['Q0_eval']
+    forecast["Q1_diff"]       = forecast['Q1'] - forecast['Q1_eval']
+
+    return forecast
+"""

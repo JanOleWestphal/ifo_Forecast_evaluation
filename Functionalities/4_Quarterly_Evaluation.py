@@ -343,7 +343,7 @@ for name, df in naive_qoq_dfs_dict.items():
 # -------------------------------------------------------------------------------------------------#
 
 
-print("Computing error statistics ...  \n")
+print("Computing error statistics (this takes a significant amount of time) ...  \n")
 
 
 

@@ -130,39 +130,63 @@ def create_qoq_evaluation_df(qoq_forecast_df, eval_vector):
 # Create a df for quarterly forecast evaluation
 # --------------------------------------------------------------------------------------------------
 
-def collapse_quarterly_prognosis(df):
-   """
-   Move all cols to the same rows, rename rows Q1-Qx: gets quarterly error measures based on
-   forecast horizons
-   """
-   # Make a copy to avoid modifying the original DataFrame
-   result_df = df.copy()
-   
-   # Process each column
-   for col in result_df.columns:
-       # Get non-missing values
-       non_missing = result_df[col].dropna()
-       
-       # Reset the column to all NaN first
-       result_df[col] = np.nan
-       
-       # Place non-missing values starting from row 0
-       if len(non_missing) > 0:
-           result_df.iloc[:len(non_missing), result_df.columns.get_loc(col)] = non_missing.values
-   
-   # Find the maximum number of non-missing values across all columns
-   max_non_missing = 0
-   for col in result_df.columns:
-       non_missing_count = result_df[col].notna().sum()
-       max_non_missing = max(max_non_missing, non_missing_count)
-   
-   # Keep only the rows that contain data (up to max_non_missing)
-   result_df = result_df.iloc[:max_non_missing]
-   
-   # Rename index to Q1, Q2, Q3, etc.
-   result_df.index = [f'Q{i}' for i in range(len(result_df))]
-   
-   return result_df
+def collapse_quarterly_prognosis(df, Ifocast_mode=False):
+    """
+    Move all cols to the same rows, rename rows Q1-Qx: gets quarterly error measures based on
+    forecast horizons. If Ifocast_mode=True, shift first three columns down by 1 and label index as Qminus1, Q0, Q1, ...
+    """
+    # Make a copy to avoid modifying the original DataFrame
+    result_df = df.copy()
+
+    
+    for col in result_df.columns:
+        # Drop NA
+        non_missing = result_df[col].dropna()
+
+        # Flatten non-scalar values
+        clean_values = []
+        for v in non_missing.values:
+            if isinstance(v, (list, np.ndarray, pd.Series)):
+                if len(v) > 0:
+                    clean_values.append(float(v[0]))  # Take first element
+                else:
+                    clean_values.append(np.nan)
+            elif v is None:
+                clean_values.append(np.nan)
+            else:
+                clean_values.append(float(v))
+
+        # Assign clean float values
+        result_df[col] = np.nan
+        result_df.iloc[:len(clean_values), result_df.columns.get_loc(col)] = clean_values
+
+    
+    # Find the maximum number of non-missing values across all columns
+    max_non_missing = 0
+    for col in result_df.columns:
+        non_missing_count = result_df[col].notna().sum()
+        max_non_missing = max(max_non_missing, non_missing_count)
+    
+    # Keep only the rows that contain data (up to max_non_missing)
+    result_df = result_df.iloc[:max_non_missing]
+
+
+    # If Ifocast_mode is True: rename index and shift first three columns
+    """This is done because the data strucutre is almost identical to the one used in the qoq evaluation,
+    but for the initial observation, Qminus is missing """
+    if Ifocast_mode:
+        result_df.index = ['Qminus1'] + [f'Q{i}' for i in range(max_non_missing - 1)]
+
+        # Shift first three columns downward by one (introduce NA at top)
+        for col in result_df.columns[:3]:
+            result_df[col] = result_df[col].shift(1)
+
+    else:
+        # Default index naming: Q0, Q1, ...
+        result_df.index = [f'Q{i}' for i in range(max_non_missing)]
+
+    return result_df
+
 
 
 
