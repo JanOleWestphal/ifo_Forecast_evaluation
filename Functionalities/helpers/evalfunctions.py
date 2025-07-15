@@ -130,6 +130,8 @@ def create_qoq_evaluation_df(qoq_forecast_df, eval_vector):
 # Create a df for quarterly forecast evaluation
 # --------------------------------------------------------------------------------------------------
 
+## General version
+
 def collapse_quarterly_prognosis(df, Ifocast_mode=False):
     """
     Move all cols to the same rows, rename rows Q1-Qx: gets quarterly error measures based on
@@ -188,6 +190,110 @@ def collapse_quarterly_prognosis(df, Ifocast_mode=False):
     return result_df
 
 
+
+## Special version for ifoCAST: cannot collapse to first rows as reporting scope is varying
+
+def collapse_full_ifocast(df):
+    """
+    Collapse quarterly forecast data into proper quarter brackets (Qminus1, Q0, Q1) 
+    based on datetime comparison between rows and columns.
+    
+    Args:
+        df: DataFrame with pd.datetime, 'datetime_diff', 'datetime_eval' columns,
+            followed by forecast data columns with datetime information in column names
+    
+    Returns:
+        DataFrame with rows Qminus1, Q0, Q1 containing properly aligned quarterly data
+    """
+
+    # Ensure the DataFrame has a datetime index
+    df.index = pd.to_datetime(df.index)
+
+    # Create result dataframe with same columns as input
+    result_df = pd.DataFrame(columns=df.columns, index=['Qminus1', 'Q0', 'Q1'])
+
+
+    ## Helper Functions to extract datetime and quarter information
+    
+    # Helper function to extract datetime from column name (assuming first part is datetime)
+    def extract_datetime_from_col(col_name):
+        try:
+            # Assuming datetime is at the beginning of column name
+            # You may need to adjust this based on your actual column naming convention
+            datetime_str = col_name.split('_')[0] if '_' in col_name else col_name
+            return pd.to_datetime(datetime_str)
+        except:
+            return None
+    
+    # Helper function to get quarter from datetime
+    def get_quarter_year(dt):
+        if pd.isna(dt):
+            return None
+        return (dt.year, dt.quarter)
+    
+
+    ## Loop through all cols and then through all rows to determine data structure  
+        
+    # Process each column
+    for col_idx, col in enumerate(df.columns):
+            
+        # Extract datetime from column name
+        col_datetime = extract_datetime_from_col(col)
+            
+        col_quarter_year = get_quarter_year(col_datetime)
+        
+        # Process each row in this column
+        for row_idx, row in df.iterrows():
+            if pd.isna(df.loc[row_idx, col]):
+                continue
+                
+            # Get row datetime from index
+            if pd.isna(row_idx):
+                continue
+                
+            row_quarter_year = get_quarter_year(row_idx)
+            
+            if row_quarter_year is None or col_quarter_year is None:
+                continue
+            
+            # Calculate quarter difference
+            row_year, row_quarter = row_quarter_year
+            col_year, col_quarter = col_quarter_year
+            
+            # Convert to total quarters for comparison
+            row_total_quarters = row_year * 4 + row_quarter
+            col_total_quarters = col_year * 4 + col_quarter
+            
+            quarter_diff = col_total_quarters - row_total_quarters
+            
+            # Assign to appropriate result row based on quarter difference
+            if quarter_diff == -1:  # Column is one quarter behind row
+                target_row = 'Q1'
+            elif quarter_diff == 0:  # Same quarter
+                target_row = 'Q0'
+            elif quarter_diff == 1:  # Column is one quarter ahead of row
+                target_row = 'Qminus1'
+            else:
+
+                print(f"\n \nWarning: Value outside the Qminus1-Q0-Q1 range: {col} at {row_idx} with diff {quarter_diff} \n")
+
+                continue  # Skip if difference is not -1, 0, or 1
+            
+            # Clean and assign the value
+            value = df.loc[row_idx, col]
+            if isinstance(value, (list, np.ndarray, pd.Series)):
+                if len(value) > 0:
+                    clean_value = float(value[0])
+                else:
+                    clean_value = np.nan
+            elif value is None:
+                clean_value = np.nan
+            else:
+                clean_value = float(value)
+            
+            result_df.loc[target_row, col] = clean_value
+    
+    return result_df
 
 
 

@@ -601,27 +601,6 @@ ifoCAst_Qm1_Q0_Q1_filtered = filter_by_forecast_dates(ifoCAst_Qm1_Q0_Q1_full)
 
 
 
-# ==================================================================================================
-# Get evaluation Objects
-# ==================================================================================================
-
-# --------------------------------------------------------------------------------------------------
-# Ifo QoQ Forecasts
-# --------------------------------------------------------------------------------------------------
-
-
-## Evalaute against First Release
-ifo_qoq_forecasts_eval_first = create_qoq_evaluation_df(ifo_qoq_forecasts, qoq_first_eval)
-ifo_qoq_forecasts_eval_first_collapsed = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_first)
-
-#show(ifo_qoq_forecasts_eval_first_collapsed)
-
-## Get error series
-#Evaluate against first releases
-ifo_qoq_errors_first = get_qoq_error_series(ifo_qoq_forecasts_eval_first_collapsed) 
-
-
-
 
 
 # ==================================================================================================
@@ -632,8 +611,7 @@ ifo_qoq_errors_first = get_qoq_error_series(ifo_qoq_forecasts_eval_first_collaps
 # Evaluation function
 # --------------------------------------------------------------------------------------------------
 
-
-def get_ifoCAST_differences(forecast_df: pd.DataFrame, eval_df: pd.DataFrame) -> pd.DataFrame:
+def get_ifoCAST_differences(forecast_df: pd.DataFrame, eval_df: pd.DataFrame, full_input=False) -> pd.DataFrame:
     """
     Rescales forecast_df and calls additional processing functions.
     
@@ -649,10 +627,6 @@ def get_ifoCAST_differences(forecast_df: pd.DataFrame, eval_df: pd.DataFrame) ->
     # Copy to precent unexpected changes
     forecast_df = forecast_df.copy()
     eval_df = eval_df.copy()
-
-    """
-    NOTE: Check this data processing for the full forecast data, there seems to be a bug
-    """
 
     #show(forecast_df)
 
@@ -706,17 +680,22 @@ def get_ifoCAST_differences(forecast_df: pd.DataFrame, eval_df: pd.DataFrame) ->
     
     # Step II: Process the rescaled DataFrame with additional functions
     
-    # Placeholder for first function call
+    # Get the evaluation DataFrame
     qoq_evaluation_df = create_qoq_evaluation_df(final_df, eval_df)
+
+    #show(qoq_evaluation_df)
     
-    # Placeholder for second function call  
-    final_result = collapse_quarterly_prognosis(qoq_evaluation_df, Ifocast_mode=True) # Adjusts for the fact that initial Qminus1 is missing
+    # Collapse into quarterly prognosis structure
+
+    if full_input:
+        final_result = collapse_full_ifocast(qoq_evaluation_df)
+
+    else:
+        final_result = collapse_quarterly_prognosis(qoq_evaluation_df, Ifocast_mode=True) # Adjusts for the fact that initial Qminus1 is missing
 
     #show(final_result)
     
     return final_result
-
-
 
 
 
@@ -746,7 +725,7 @@ fitered_eval_dfs = {}
 
 for name, eval_df in zip(ifocast_filtered_eval_df_names, eval_dfs):
 
-    fitered_eval_dfs[name] = get_ifoCAST_differences(ifoCAst_Qm1_Q0_Q1_filtered, eval_df)
+    fitered_eval_dfs[name] = get_ifoCAST_differences(ifoCAst_Qm1_Q0_Q1_filtered, eval_df, full_input=False)
 
 
 
@@ -766,9 +745,12 @@ full_eval_dfs = {}
 
 for name, eval_df in zip(ifocast_full_eval_df_names, eval_dfs):
 
-    show(ifoCAst_Qm1_Q0_Q1_full)
-    full_eval_dfs[name] = get_ifoCAST_differences(ifoCAst_Qm1_Q0_Q1_full, eval_df)
-    show(full_eval_dfs[name])
+    #show(ifoCAst_Qm1_Q0_Q1_full)
+    full_eval_dfs[name] = get_ifoCAST_differences(ifoCAst_Qm1_Q0_Q1_full, eval_df, full_input=True)
+    #show(full_eval_dfs[name])
+
+
+
 
 
 
@@ -786,6 +768,45 @@ Could be added here as well
 
 
 
+
+# --------------------------------------------------------------------------------------------------
+# Ifo QoQ Forecasts matched
+# --------------------------------------------------------------------------------------------------
+
+
+## Filter for ifoCAST dates
+
+ifo_qoq_forecasts = ifo_qoq_forecasts.loc[:, 
+    ifo_qoq_forecasts.columns.to_series().dt.to_period('Q').isin(
+                                ifoCAst_Qm1_Q0_Q1_filtered.T.columns.to_series().dt.to_period('Q'))]
+
+
+## Define names
+ifo_qoq_matched_eval_df_names = ['ifo_qoq_matched_first',
+                          'ifo_qoq_matched_latest',
+                          'ifo_qoq_matched_T45',
+                          'ifo_qoq_matched_T55']
+
+
+# Loop to create the eval dfs
+ifo_qoq_eval_dfs = {}
+
+for name, eval_df in zip(ifo_qoq_matched_eval_df_names, eval_dfs):
+
+    # Create the evaluation DataFrames
+    ifo_qoq_eval_dfs[name] = create_qoq_evaluation_df(ifo_qoq_forecasts, eval_df)
+
+    # Collapse them into the desired structure
+    ifo_qoq_eval_dfs[name] = collapse_quarterly_prognosis(ifo_qoq_eval_dfs[name])
+
+
+
+
+
+
+
+
+
 # ==================================================================================================
 # Get Error Statistics and Tables
 # ==================================================================================================
@@ -794,9 +815,43 @@ Could be added here as well
 # --------------------------------------------------------------------------------------------------
 # ifo QoQ Forecasts filtered to ifoCAST dates
 # --------------------------------------------------------------------------------------------------
-"""
-Add this
-"""
+
+## Filepaths for error series and tables
+ifo_qoq_matched_error_path = os.path.join(wd, '0_1_Output_Data', '5_ifo_qoq_error_series_matched_to_ifoCAST')
+os.makedirs(ifo_qoq_matched_error_path, exist_ok=True)
+
+# Error Tables
+ifo_qoq_matched_table_path = os.path.join(table_folder, '4_ifo_QoQ_matched_to_ifoCAST')
+os.makedirs(ifo_qoq_matched_table_path, exist_ok=True)
+
+
+## Evaluation and Table Creation
+ifo_qoq_matched_error_series_names = ['ifo_qoq_matched_errors_first',
+                          'ifo_qoq_matched_errors_latest',
+                          'ifo_qoq_matched_errors_T45',
+                          'ifo_qoq_matched_errors_T55']
+
+ifo_qoq_matched_table_names = ['ifo_qoq_matched_error_tables_first',
+                          'ifo_qoq_matched_error_tables_latest',
+                          'ifo_qoq_matchederror_tables_T45',
+                          'ifo_qoq_matched_error_tables_T55']
+
+
+## Create error series and tables
+for error_name, table_name, eval_key in zip(ifo_qoq_matched_error_series_names, 
+                                            ifo_qoq_matched_table_names, ifo_qoq_matched_eval_df_names):
+    
+    # Get the error series
+    error_series = get_qoq_error_series(ifo_qoq_eval_dfs[eval_key], ifo_qoq_matched_error_path, file_name = f"{error_name}.xlsx")
+    #show(error_series)
+
+    # Create the corresponding error table
+    get_qoq_error_statistics_table(error_series, 
+                                   error_name.split('_')[-1], 
+                                   ifo_qoq_matched_table_path, 
+                                   f"{table_name}.xlsx")
+
+
 
 
 
@@ -844,7 +899,7 @@ for error_name, table_name, eval_key in zip(ifoCast_filtered_error_series_names,
 # --------------------------------------------------------------------------------------------------
 
 ## Filepaths for error series and tables
-ifoCast_full_error_path = os.path.join(wd, '0_1_Output_Data', '6_ifoCAST_error_series_full')
+ifoCast_full_error_path = os.path.join(wd, '0_1_Output_Data', '5_ifoCAST_error_series_full')
 os.makedirs(ifoCast_full_error_path, exist_ok=True)
 
 # Error Tables
@@ -870,7 +925,7 @@ for error_name, table_name, eval_key in zip(ifoCast_full_error_series_names,
     
     # Get the error series
     error_series = get_qoq_error_series(full_eval_dfs[eval_key], ifoCast_full_error_path, file_name = f"{error_name}.xlsx")
-    show(error_series)
+    #show(error_series)
 
     # Create the corresponding error table
     get_qoq_error_statistics_table(error_series, 
