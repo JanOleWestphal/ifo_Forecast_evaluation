@@ -32,6 +32,8 @@ Functions:
 
 
 
+print(" \n Data Processing started ... \n")
+
 
 # ==================================================================================================
 #                                           SETUP
@@ -410,6 +412,57 @@ gdp_combined = pd.concat([gdp_lr_scaled, gdp_merged])
 
 # Sort index if necessary
 gdp_combined = gdp_combined.sort_index()
+
+
+#show(gdp_combined)
+
+
+
+# ==================================================================================================
+# OPTIONAL: Extend the real-time data backwards
+# ==================================================================================================
+
+if settings.extend_rt_data_backwards:
+
+    print('Imputing real-time releases for Q1-1985 to Q2-1995 ... \n')
+
+    # Ensure proper datetime formats
+    gdp_combined = gdp_combined.copy()
+    gdp_combined.index = pd.to_datetime(gdp_combined.index).to_period('Q').to_timestamp()
+    gdp_combined.columns = pd.to_datetime(gdp_combined.columns)
+
+    # Select the first datetime column
+    truncated_cols = {}
+    first_col = gdp_combined.iloc[:,0].dropna()
+    #show(first_col)
+    
+    
+    # Set starting point for release dates
+    current_col_time = gdp_combined.columns[0]
+    current_series = first_col.copy()
+
+
+    # Set lower date limit for index (not col name!)
+    while len(current_series) > 1 and current_col_time >= pd.Timestamp("1989-01-01"):
+
+        # Drop the most recent value to simulate a past release
+        current_series = current_series.iloc[:-1]
+        current_col_time = current_col_time - pd.offsets.QuarterEnd(1)
+        truncated_cols[current_col_time] = current_series.copy()
+
+    # Create DataFrame and reindex to match gdp_combined
+    truncated_df = pd.DataFrame(truncated_cols)
+    truncated_df = truncated_df.reindex(gdp_combined.index)
+
+    # Combine and sort columns
+    gdp_combined = pd.concat([gdp_combined, truncated_df], axis=1)
+    gdp_combined = gdp_combined.reindex(sorted(gdp_combined.columns), axis=1)
+
+    #show(gdp_combined)
+
+
+
+
 
 
 

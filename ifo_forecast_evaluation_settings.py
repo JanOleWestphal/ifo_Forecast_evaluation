@@ -55,8 +55,13 @@ api_pull = True # True or False; only set False if no internet connection
 # Features to be developed:
 """
 - Option what to include in iteratively genereated result graphs
-
 """
+
+# Decide wether to extend the available real-time data by using the earliest available data release 
+# Q2-1995 and imputing it backwards to Q1-1989 (True)
+extend_rt_data_backwards = True # True or False
+
+
 
 # Define which quarter of which year should be the earliest data point, available from Q1-1970 onwards
 evaluation_limit_year = 1970            # from 1970 onwards; set as integer
