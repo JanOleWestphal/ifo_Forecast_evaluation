@@ -837,19 +837,36 @@ ifo_qoq_matched_table_names = ['ifo_qoq_matched_error_tables_first',
                           'ifo_qoq_matched_error_tables_T55']
 
 
-## Create error series and tables
-for error_name, table_name, eval_key in zip(ifo_qoq_matched_error_series_names, 
-                                            ifo_qoq_matched_table_names, ifo_qoq_matched_eval_df_names):
-    
-    # Get the error series
-    error_series = get_qoq_error_series(ifo_qoq_eval_dfs[eval_key], ifo_qoq_matched_error_path, file_name = f"{error_name}.xlsx")
-    #show(error_series)
 
-    # Create the corresponding error table
-    get_qoq_error_statistics_table(error_series, 
-                                   error_name.split('_')[-1], 
-                                   ifo_qoq_matched_table_path, 
-                                   f"{table_name}.xlsx")
+## Create error series and tables
+
+# Dicts to store outputs
+ifo_qoq_matched_error_series_dict = {}
+ifo_qoq_matched_error_table_dict  = {}
+
+# Create error series and tables
+for error_name, table_name, eval_key in zip(
+    ifo_qoq_matched_error_series_names, 
+    ifo_qoq_matched_table_names, 
+    ifo_qoq_matched_eval_df_names
+):
+    # Get the error series and store it
+    error_series = get_qoq_error_series(
+        ifo_qoq_eval_dfs[eval_key], 
+        ifo_qoq_matched_error_path, 
+        file_name=f"{error_name}.xlsx"
+    )
+    ifo_qoq_matched_error_series_dict[error_name] = error_series
+
+    # Get the statistics table and store it
+    error_table = get_qoq_error_statistics_table(
+        error_series, 
+        error_name.split('_')[-1], 
+        ifo_qoq_matched_table_path, 
+        f"{table_name}.xlsx"
+    )
+    ifo_qoq_matched_error_table_dict[table_name] = error_table
+
 
 
 
@@ -879,18 +896,34 @@ ifoCast_filtered_table_names = ['ifoCAst_error_tables_filtered_first',
                           'ifoCAst_error_tables_filtered_T55']
 
 
+
+# Dicts to store outputs
+ifoCast_filtered_error_series_dict = {}
+ifoCast_filtered_error_table_dict  = {}
+
 ## Create error series and tables
 for error_name, table_name, eval_key in zip(ifoCast_filtered_error_series_names, 
-                                            ifoCast_filtered_table_names, ifocast_filtered_eval_df_names):
-    
-    # Get the error series
-    error_series = get_qoq_error_series(fitered_eval_dfs[eval_key], ifoCast_filtered_error_path, file_name = f"{error_name}.xlsx")
+                            ifoCast_filtered_table_names, ifocast_filtered_eval_df_names):
 
-    # Create the corresponding error table
-    get_qoq_error_statistics_table(error_series, 
-                                   error_name.split('_')[-1], 
-                                   ifoCAST_filtered_table_path, 
-                                   f"{table_name}.xlsx")
+    # Get the error series and store it
+    error_series = get_qoq_error_series(
+        fitered_eval_dfs[eval_key], 
+        ifoCast_filtered_error_path, 
+        file_name=f"{error_name}.xlsx"
+    )
+
+    ifoCast_filtered_error_series_dict[error_name] = error_series
+
+    # Get the statistics table and store it
+    error_table = get_qoq_error_statistics_table(
+        error_series, 
+        error_name.split('_')[-1], 
+        ifoCAST_filtered_table_path, 
+        f"{table_name}.xlsx"
+    )
+    ifoCast_filtered_error_table_dict[table_name] = error_table
+
+
 
 
 
@@ -919,19 +952,33 @@ ifoCast_full_table_names = ['ifoCAst_error_tables_full_first',
                           'ifoCAst_error_tables_full_T55']
 
 
-## Create error series and tables
-for error_name, table_name, eval_key in zip(ifoCast_full_error_series_names, 
-                                            ifoCast_full_table_names, ifocast_full_eval_df_names):
-    
-    # Get the error series
-    error_series = get_qoq_error_series(full_eval_dfs[eval_key], ifoCast_full_error_path, file_name = f"{error_name}.xlsx")
-    #show(error_series)
+# Dicts to store outputs
+ifoCast_full_error_series_dict = {}
+ifoCast_full_error_table_dict  = {}
 
-    # Create the corresponding error table
-    get_qoq_error_statistics_table(error_series, 
-                                   error_name.split('_')[-1], 
-                                   ifoCAST_full_table_path, 
-                                   f"{table_name}.xlsx")
+# Create error series and tables
+for error_name, table_name, eval_key in zip(
+    ifoCast_full_error_series_names, 
+    ifoCast_full_table_names, 
+    ifocast_full_eval_df_names
+):
+    # Get the error series and store it
+    error_series = get_qoq_error_series(
+        full_eval_dfs[eval_key], 
+        ifoCast_full_error_path, 
+        file_name=f"{error_name}.xlsx"
+    )
+    ifoCast_full_error_series_dict[error_name] = error_series
+
+    # Get the statistics table and store it
+    error_table = get_qoq_error_statistics_table(
+        error_series, 
+        error_name.split('_')[-1], 
+        ifoCAST_full_table_path, 
+        f"{table_name}.xlsx"
+    )
+    ifoCast_full_error_table_dict[table_name] = error_table
+
 
 
 
@@ -966,138 +1013,263 @@ print("Visualizing error statistics ...  \n")
 
 
 
+# ==================================================================================================
+#                                      Build the Savepaths
+# ==================================================================================================
+
+## Parent Folders
+
+# Scatter, Barplot and Series
+ifoCAST_scatter_path = os.path.join(graph_folder, '2_ifoCAST_matched_Error_Scatter')
+ifoCAST_barplot_path = os.path.join(graph_folder, '2_ifoCAST_matched_Error_Bars')
+ifoCAST_series_path = os.path.join(graph_folder, '2_ifoCAST_matched_Error_Series')
+
+# Store in Dict
+ifoCAST_graph_folders = {
+    'scatter': ifoCAST_scatter_path,
+    'barplot': ifoCAST_barplot_path,
+    'series': ifoCAST_series_path
+}
+
+
+
+## Create child folders
+
+# Subfolder names
+subfolder_names = [
+    '0_First_Evaluation',
+    '1_Latest_Evaluation',
+    '1_T45_Evaluation',
+    '1_T55_EValuation'
+]
+
+# Create folders and store paths
+ifoCAST_paths = {}
+
+for graph_type, parent_path in ifoCAST_graph_folders.items():
+    ifoCAST_paths[graph_type] = {}
+    for sub in subfolder_names:
+        full_path = os.path.join(parent_path, sub)
+        os.makedirs(full_path, exist_ok=True)
+        ifoCAST_paths[graph_type][sub] = full_path
+
+
+
 
 
 
 # ==================================================================================================
-#                                 PLOT AND SAVE RESULTS OF INTEREST
+#                                      Error Bar Plots
 # ==================================================================================================
 
+"""
+plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8), 
+                           scale_by_n=True, n_bars=10, show=False,
+                           save_path=None, save_name=None)
+"""
+
+## Loop over metrics and Eval_horizons
+
+# Keys for dynamic naming
+eval_horizon_keys = ['first', 'latest', 'T45', 'T55']
 
 # --------------------------------------------------------------------------------------------------
-# Error Time Series
+# Matched ifoCAST and ifo QoQ
 # --------------------------------------------------------------------------------------------------
 
-## Savepaths
+# Loop over metrics and evaluation horizons
+for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfolder_names, eval_horizon_keys):
 
-# ifo
-first_eval_error_series_path_ifo = os.path.join(graph_folder, '1_QoQ_Error_Series', '0_First_Evaluation_ifo')
-first_eval_error_series_path = os.path.join(graph_folder, '1_QoQ_Error_Series', '0_First_Evaluation_joint')
-latest_eval_error_series_path = os.path.join(graph_folder, '1_QoQ_Error_Series', '1_Latest_Evaluation')
+    for horizon, foldername in zip(eval_horizon_keys, subfolder_names):
+        
+        save_path = ifoCAST_paths['barplot'][foldername]
 
-os.makedirs(first_eval_error_series_path_ifo, exist_ok=True)
-os.makedirs(first_eval_error_series_path, exist_ok=True)
-os.makedirs(latest_eval_error_series_path, exist_ok=True)
+        # Access table entries by horizon key
+        ifoCAST_table  = ifoCast_filtered_error_table_dict.get(f'ifoCAst_error_tables_filtered_{horizon}')
+        ifo_table    = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}')
+        
+        if ifoCAST_table is None or ifo_table is None:
+            print(f"\n WARNING: {horizon} - missing table. This shouldnt happen \n")
+            continue
 
-# Naive
+        # Call plotting function
+        plot_quarterly_metrics(
+            ifo_table,
+            ifoCAST_table,
+            metric_col=metric,
+            scale_by_n=False,
+            show=False,
+            save_path=save_path,
+            save_name=f'0_ifo_ifoCAST_filterd_Quarterly_{metric}_{horizon}_eval.png'
+        )
 
 
-## Create and Save Plots
+
+# --------------------------------------------------------------------------------------------------
+# Full ifoCAST and matched ifo QoQ
+# --------------------------------------------------------------------------------------------------
+
+# Loop over metrics and evaluation horizons
+for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfolder_names, eval_horizon_keys):
+
+    for horizon, foldername in zip(eval_horizon_keys, subfolder_names):
+        
+        save_path = ifoCAST_paths['barplot'][foldername]
+
+        # Access table entries by horizon key
+        ifoCAST_table  = ifoCast_full_error_table_dict.get(f'ifoCAst_error_tables_full_{horizon}')
+        ifo_table    = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}')
+        
+        if ifoCAST_table is None or ifo_table is None:
+            print(f"\n WARNING: {horizon} - missing table. This shouldnt happen \n")
+            continue
+
+        # Call plotting function
+        plot_quarterly_metrics(
+            ifo_table,
+            ifoCAST_table,
+            metric_col=metric,
+            scale_by_n=False,
+            show=False,
+            save_path=save_path,
+            save_name=f'1_ifo_ifoCAST_full_Quarterly_{metric}_{horizon}_eval.png'
+        )
+
+
+
+
+# ==================================================================================================
+#                                      Error Time Series
+# ==================================================================================================
+
 """
 plot_forecast_timeseries(*args, df_eval=None, title_prefix=None, figsize=(12, 8), 
                              show=False, save_path=None, save_name_prefix=None, select_quarters=None)
 """
-"""
-plot_forecast_timeseries(ifo_qoq_forecasts_eval_first, 
-                         df_eval=qoq_first_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
-                             show=False, 
-                             save_path=first_eval_error_series_path_ifo, save_name_prefix='ifo_First_Eval_', select_quarters=None)
 
-plot_forecast_timeseries(ifo_qoq_forecasts_eval_first, naive_qoq_first_eval_dfs, 
-                         df_eval=qoq_first_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
-                             show=False, 
-                             save_path=first_eval_error_series_path, save_name_prefix='First_Eval_', select_quarters=None)
-
-
-plot_forecast_timeseries(ifo_qoq_forecasts_eval_latest, naive_qoq_latest_eval_dfs, 
-                         df_eval=qoq_latest_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
-                             show=False, 
-                             save_path=latest_eval_error_series_path, save_name_prefix='Latest_Eval_', select_quarters=None)
-
-
+# Evaluation horizon metadata
+eval_horizons = ['first', 'latest', 'T45', 'T55']
+eval_prefixes = ['qoq_first_eval', 'qoq_latest_eval', 'T45_eval', 'T55_eval']
 
 
 
 # --------------------------------------------------------------------------------------------------
-# Error Scatter Plots
+# Matched ifoCAST and ifo QoQ
 # --------------------------------------------------------------------------------------------------
 
-## Savepaths
-first_eval_error_line_path = os.path.join(graph_folder, '1_QoQ_Error_Scatter', '0_First_Evaluation')
-latest_eval_error_line_path = os.path.join(graph_folder, '1_QoQ_Error_Scatter', '1_Latest_Evaluation')
+# Loop through evaluation horizons
+for horizon, ifo_name, ifoCAST_name, subfolder in zip(
+    eval_horizons, ifo_qoq_matched_eval_df_names, ifocast_full_eval_df_names, subfolder_names):
+    
+    # Get forecast data
+    ifo_qoq_df = ifo_qoq_eval_dfs.get(ifo_name)
+    filtered_df = fitered_eval_dfs.get(ifoCAST_name)
+    
+    save_path = ifoCAST_paths['series'][subfolder]
 
-os.makedirs(first_eval_error_line_path, exist_ok=True)
-os.makedirs(latest_eval_error_line_path, exist_ok=True)
-
-
-## Create and Save Plots
-
-# First Evaluation
-plot_error_lines(ifo_qoq_errors_first, 
-                  show=False, 
-                  save_path=first_eval_error_line_path,
-                  save_name=f'ifo_QoQ_First_Eval_Error_Scatter.png')
-
-plot_error_lines(ifo_qoq_errors_first, naive_qoq_first_eval_error_series_dict,
-                  show=False, 
-                  save_path=first_eval_error_line_path,
-                  save_name=f'Joint_QoQ_First_Eval_Error_Scatter.png')
-                 
-
-# Latest Evaluation
-plot_error_lines(ifo_qoq_errors_latest, 
-                  show=False, 
-                  save_path=latest_eval_error_line_path,
-                  save_name=f'ifo_QoQ_Latest_Eval_Error_Scatter.png')
-
-plot_error_lines(ifo_qoq_errors_latest, naive_qoq_latest_eval_error_series_dict,
-                  show=False, 
-                  save_path=latest_eval_error_line_path,
-                  save_name=f'Joint_QoQ_Latest_Eval_Error_Scatter.png')
-
-
-
+    # Plot 
+    plot_forecast_timeseries(
+        ifo_qoq_df,
+        filtered_df,
+        df_eval=None,
+        title_prefix=f"ifoCAST_filtered_{horizon.capitalize()}",
+        show=False,
+        save_path=save_path,
+        save_name_prefix=f"0_ifoCAST_filtered_{horizon}_series",
+        select_quarters=None
+    )
 
 
 # --------------------------------------------------------------------------------------------------
-# Error Bar Plots
+# Full ifoCAST and matched ifo QoQ
 # --------------------------------------------------------------------------------------------------
 
+# Loop through evaluation horizons
+for horizon, ifo_name, ifoCAST_name, subfolder in zip(
+    eval_horizons, ifo_qoq_matched_eval_df_names, ifocast_full_eval_df_names, subfolder_names):
+    
+    # Get forecast data
+    ifo_qoq_df = ifo_qoq_eval_dfs.get(ifo_name)
+    full_df = full_eval_dfs.get(ifoCAST_name)
+    
+    save_path = ifoCAST_paths['series'][subfolder]
 
-## Savepaths
-first_eval_error_bars_path = os.path.join(graph_folder, '1_QoQ_Error_Bars', '0_First_Evaluation')
-latest_eval_error_bars_path = os.path.join(graph_folder, '1_QoQ_Error_Bars', '1_Latest_Evaluation')
-
-os.makedirs(first_eval_error_bars_path, exist_ok=True)
-os.makedirs(latest_eval_error_bars_path, exist_ok=True)
-
-
-## Create and Save Plots
-
-# First Evaluation
-for metric in ['ME', 'MAE', 'MSE', 'RMSE', 'SE']:
-    plot_quarterly_metrics(ifo_qoq_error_table_first, naive_qoq_first_eval_error_tables_dict, 
-                           
-                        metric_col=metric,
-                        scale_by_n=False, show=False, 
-
-                        save_path=first_eval_error_bars_path,
-                        save_name=f'Joint_Quarterly_{metric}_first_eval.png'
-                            )
+    # Plot 
+    plot_forecast_timeseries(
+        ifo_qoq_df,
+        full_df,
+        df_eval=None,
+        title_prefix=f"ifoCAST_filtered_{horizon.capitalize()}",
+        show=False,
+        save_path=save_path,
+        save_name_prefix=f"1_ifoCAST_full_{horizon}_series",
+        select_quarters=None
+    )
 
 
-# Latest Evaluation
-for metric in ['ME', 'MAE', 'MSE', 'RMSE', 'SE']:
-    plot_quarterly_metrics(ifo_qoq_error_table_latest, naive_qoq_latest_eval_error_tables_dict, 
-                           
-                        metric_col=metric,
-                        scale_by_n=False, show=False, 
 
-                        save_path=latest_eval_error_bars_path,
-                        save_name=f'Joint_Quarterly_{metric}_latest_eval.png'
-                            )
+
+
+
+
+
+# ==================================================================================================
+#                                      Error Scatter Plots
+# ==================================================================================================
 
 """
+plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8),
+                       n_bars: int = 10, show: bool = False,
+                       save_path: Optional[str] = None, save_name: Optional[str] = None):
+"""
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Matched ifoCAST and ifo QoQ → plot_error_lines
+# --------------------------------------------------------------------------------------------------
+
+for horizon, ifo_name, ifoCAST_name, subfolder in zip(
+    eval_horizons, ifo_qoq_matched_error_series_names, ifoCast_filtered_error_series_names, subfolder_names):
+    
+    ifo_error_df = ifo_qoq_matched_error_series_dict.get(ifo_name)
+    filtered_error_df = ifoCast_filtered_error_series_dict.get(ifoCAST_name)
+    
+    save_path = ifoCAST_paths['scatter'][subfolder]
+
+    if ifo_qoq_df is not None and filtered_df is not None:
+        plot_error_lines(
+            ifo_error_df,
+            filtered_error_df,
+            title=f"ifoCAST_filtered_{horizon.capitalize()}",
+            show=False,
+            save_path=save_path,
+            save_name=f"0_ifoCAST_filtered_{horizon}_errors"
+        )
+
+
+# --------------------------------------------------------------------------------------------------
+# Full ifoCAST and matched ifo QoQ → plot_error_lines
+# --------------------------------------------------------------------------------------------------
+
+for horizon, ifo_name, ifoCAST_name, subfolder in zip(eval_horizons, 
+    ifo_qoq_matched_error_series_names, ifoCast_full_error_series_names, subfolder_names):
+    
+    ifo_error_df = ifo_qoq_matched_error_series_dict.get(ifo_name)
+    full_error_df = ifoCast_full_error_series_dict.get(ifoCAST_name)
+    
+    save_path = ifoCAST_paths['scatter'][subfolder]
+
+    if ifo_qoq_df is not None and full_df is not None:
+        plot_error_lines(
+            ifo_error_df,
+            full_error_df,
+            title=f"ifoCAST_full_{horizon.capitalize()}",
+            show=False,
+            save_path=save_path,
+            save_name=f"1_ifoCAST_full_{horizon}_errors"
+        )
+
 
 
 
