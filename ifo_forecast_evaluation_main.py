@@ -21,8 +21,6 @@
 """
 TO DO:
 - Outlier Analyse: Filter auf Echtzeitdatenebene
-- Letzter Datenstand ifoCAST
-- Naive Forecastervs ifoCAST
 """
 
 
