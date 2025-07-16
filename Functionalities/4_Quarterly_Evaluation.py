@@ -298,7 +298,7 @@ ifo_qoq_forecasts_eval_first_collapsed = collapse_quarterly_prognosis(ifo_qoq_fo
 
 ## Evalaute against Latest Release
 ifo_qoq_forecasts_eval_latest = create_qoq_evaluation_df(ifo_qoq_forecasts, qoq_latest_eval)
-ifo_qoq_forecasts_eval_latest_collapsed = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_first)
+ifo_qoq_forecasts_eval_latest_collapsed = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_latest)
 
 
 
@@ -485,7 +485,7 @@ ifo_qoq_forecasts_eval_first_collapsed_full = collapse_quarterly_prognosis(ifo_q
 
 ## Evalaute against Latest Release
 ifo_qoq_forecasts_eval_latest_full = create_qoq_evaluation_df(ifo_qoq_forecasts_full, qoq_latest_eval)
-ifo_qoq_forecasts_eval_latest_collapsed_full = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_first_full)
+ifo_qoq_forecasts_eval_latest_collapsed_full = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_latest_full)
 
 
 # --------------------------------------------------------------------------------------------------

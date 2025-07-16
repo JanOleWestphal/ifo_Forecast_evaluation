@@ -1230,14 +1230,14 @@ plot_forecast_timeseries(*args, df_eval=None, title_prefix=None, figsize=(12, 8)
 """
 
 
-
+"""
 # --------------------------------------------------------------------------------------------------
 # Matched ifoCAST and ifo QoQ
 # --------------------------------------------------------------------------------------------------
 
 # Loop through evaluation horizons
 for horizon, ifo_name, ifoCAST_name, subfolder in zip(
-    eval_horizons, ifo_qoq_matched_eval_df_names, ifocast_full_eval_df_names, subfolder_names):
+    eval_horizons, ifo_qoq_matched_eval_df_names, ifocast_filtered_eval_df_names, subfolder_names):
     
     # Get forecast data
     ifo_qoq_df = ifo_qoq_eval_dfs.get(ifo_name)
@@ -1286,7 +1286,7 @@ for horizon, ifo_name, ifoCAST_name, subfolder in zip(
         save_name_prefix=f"1_ifoCAST_full_{horizon}_series",
         select_quarters=None
     )
-
+"""
 
 
 

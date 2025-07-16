@@ -673,3 +673,18 @@ def get_ifoCAST_differences(forecast_df: pd.DataFrame, eval_df: pd.DataFrame) ->
 
     return forecast
 """
+
+ifo_colors = [
+    "#414650",  # dk1
+    "#FFFFFF",  # lt1
+    "#414650",  # dk2
+    "#F4F5FA",  # lt2
+    "#3237DE",  # accent1
+    "#FA4600",  # accent2
+    "#00BE64",  # accent3
+    "#8241D2",  # accent4
+    "#72737E",  # accent5
+    "#B9BEC8",  # accent6
+    "#3237DE",  # hlink
+    "#8241D2",  # folHlink
+]

@@ -41,6 +41,7 @@ from typing import Union, Dict, Optional
 # Import libraries
 import requests
 import pandas as pd
+#from pandasgui import show
 import numpy as np
 
 import matplotlib.pyplot as plt
@@ -485,10 +486,23 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
     
     for arg in args:
         if isinstance(arg, dict):
+
             # If it's a dictionary, add all DataFrames in it
             for name, df in arg.items():
+                # Drop Qminus1 row for the ifoCAST case
+                if 'Qminus1' in df.index:
+                    df = df.drop(index='Qminus1')
+
+                # Save the dfs
                 dfs_to_plot.append((name, df))
+
+
         elif isinstance(arg, pd.DataFrame):
+
+            # Drop Qminus1 row for the ifoCAST case
+            if 'Qminus1' in arg.index:
+                arg = arg.drop(index='Qminus1')
+
             # If it's a DataFrame, assume it's the ifo forecast
             dfs_to_plot.append(('ifo', arg))
         else:
@@ -496,6 +510,10 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
     
 
     ## PROCESS EACH DATAFRAME TO CREATE Q0-Q9 TIME SERIES
+
+    # Drop Qminus1 row for the ifoCAST case
+    
+
 
     processed_dfs = {}
     
@@ -533,6 +551,17 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
             
             # Assign each non-NA value to the corresponding Q dataframe
             for i, (idx, value) in enumerate(series.items()):
+                """
+                if i == 'minus1': #Special case for ifoCAST evaluation
+                    q_key = f'Qminus1'
+                    # Calculate target date: index date + forecast horizon
+                    target_date = idx - pd.DateOffset(months=3)  # Quarterly offset
+                    
+                    # Create new row and append to avoid fragmentation
+                    new_row = pd.DataFrame({'value': [value]}, index=[target_date])
+                    q_dfs[q_key] = pd.concat([q_dfs[q_key], new_row])
+                """
+
                 if i < 10:  # Only process first 10 non-NA values (Q0-Q9)
                     q_key = f'Q{i}'
                     # Calculate target date: index date + forecast horizon
@@ -551,7 +580,7 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
         
         processed_dfs[name] = q_dfs
     
-
+    """Q1-Q9 ggf falsch geshiftet"""
 
     ## Determine overall date range: Prefer earliest Q0 from 'ifo', fallback to global minimum
     ifo_q0_start = None
@@ -623,7 +652,12 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
         for q in quarters_to_plot:
             q_key = f'Q{q}'
             if q_key in q_dfs and not q_dfs[q_key].empty:
-                ax.plot(q_dfs[q_key].index, q_dfs[q_key]['value'], 
+
+                # Align the Q0-Q0 forecasts with their target dates
+                shifted_index = q_dfs[q_key].index.to_period('Q') - q -1  # shift by q quarters
+                shifted_index = shifted_index.to_timestamp(how='end')  # convert back to datetime
+
+                ax.plot(shifted_index, q_dfs[q_key]['value'], 
                        color=colors[color_idx], marker='o', linewidth=linewidth, linestyle=linestyle,
                        markersize=4, label=q_key, alpha=0.7)
                 color_idx += 1
@@ -676,8 +710,13 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
                     legend_label = f"{re.sub(r'_\d+$', '', name)}" #{q_key} ahead"
                 else:
                     legend_label = name
+
                 
-                ax.plot(q_dfs[q_key].index, q_dfs[q_key]['value'], 
+                # Align the Q0-Q0 forecasts with their target dates
+                shifted_index = q_dfs[q_key].index.to_period('Q') - q -1 # shift by q quarters
+                shifted_index = shifted_index.to_timestamp(how='end')  # convert back to datetime
+                
+                ax.plot(shifted_index, q_dfs[q_key]['value'], 
                        color=colors[i], marker='o', linewidth=linewidth, linestyle=linestyle,
                        markersize=4, label=legend_label, alpha=0.7)
         
@@ -719,18 +758,18 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
             )
         
         # Prepare base colors for each model
-        import matplotlib.colors as mcolors
         model_names = list(processed_dfs.keys())
         base_colors = {}
         for name in model_names:
             if 'ifo' in name.lower():
-                base_colors[name] = '#003366'
+                base_colors[name] = '#3237DE'
             else:
                 # pick a distinct tab10 color based on model index
                 idx = model_names.index(name)
                 cmap = plt.get_cmap('tab10')
                 base_colors[name] = mcolors.to_hex(cmap(idx % 10))
         
+
         # Plot each model-quarter series with shading from darkest (Q0) to lightest (Q9)
         for name, q_dfs in processed_dfs.items():
             base = base_colors[name]
@@ -739,34 +778,34 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
                 series = q_dfs.get(q_key)
                 if series is None or series.empty:
                     continue
-                # generate a lighter shade for quarter q
-                # interpolate color towards white by factor q/9
-                color = mcolors.to_rgb(base)
-                white = (1,1,1)
-                raw = q / (len(quarters_to_plot)-1 if len(quarters_to_plot)>1 else 1)
 
-                # Set the whiteness factor
+                # generate a lighter shade for quarter q
+                color = mcolors.to_rgb(base)
+                white = (1, 1, 1)
+                raw = q / (len(quarters_to_plot) - 1 if len(quarters_to_plot) > 1 else 1)
                 factor = raw * 0.7  # Scale down to avoid too light colors
-                shade = tuple(color[i] + (white[i]-color[i]) * factor for i in range(3))
+                shade = tuple(color[i] + (white[i] - color[i]) * factor for i in range(3))
                 shade_hex = mcolors.to_hex(shade)
 
-                # Determine plot style
+                # Shift index back by q quarters
+                shifted_index = series.index.to_period('Q') - q -1
+                shifted_index = shifted_index.to_timestamp(how='end')  # or 'start' if preferred
+
                 if 'ifo' in name.lower():
                     ax.plot(
-                        series.index, series['value'],
+                        shifted_index, series['value'],
                         color=shade_hex, linewidth=1.5, linestyle='-',
-                        #label=f"ifo - {q_key}", 
                         alpha=0.8
                     )
                 else:
                     ax.scatter(
-                        series.index, series['value'],
+                        shifted_index, series['value'],
                         color=shade_hex, s=30,
-                        #label=f"{re.sub(r'_\\d+$','',name)} - {q_key}", 
                         alpha=0.4
                     )
             # Add a legend for the base colors
             ax.scatter([], [], color=base_colors[name], label=name)
+
         
 
         # Customize plot
@@ -861,9 +900,9 @@ def plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8
     
     for name in df_names:
         if 'ifocast' in name.lower():
-            colors.append('#703316')
+            colors.append('#FA4600')
         elif 'ifo' in name.lower():
-            colors.append('#003366')  # dark blue for ifo
+            colors.append('#3237DE')  # dark blue for ifo
         else:
             # Sample from the dark end of orange colormap (0.7 to 1.0 range)
             color_val = 0.7 + 0.3 * non_ifo_idx / max(1, non_ifo_count - 1)
