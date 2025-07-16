@@ -334,6 +334,30 @@ print(f"Loaded ifoCAST forecasts from {ifocast_folder}. \n")
 
 
 
+
+# --------------------------------------------------------------------------------------------------
+# BONUS ANALYSIS: get latest reports of QoQ prior to the official BB releases
+# --------------------------------------------------------------------------------------------------
+
+# Keep only the last entry per unique forecast_target
+last_rows = ifocast_raw.sort_values('forecast_target').groupby('forecast_target', as_index=False).last()
+
+# Select and rename relevant columns
+ifocast_last_values = last_rows[['forecast_target', 'BIP-Prognose']].copy()
+ifocast_last_values.rename(columns={'BIP-Prognose': 'Q0'}, inplace=True)
+
+# Convert 'forecast_target' (e.g., '2024_Q1') to datetime
+periods = pd.PeriodIndex(ifocast_last_values['forecast_target'].str.replace('_', ''), freq='Q')
+ifocast_last_values['forecast_target'] = periods.to_timestamp(how='start')
+
+# Step 4: Set datetime index
+ifocast_last_values.set_index('forecast_target', inplace=True)
+
+
+#show(ifocast_last_values)
+
+
+
 # --------------------------------------------------------------------------------------------------
 # Extract Evaluation Series and Forecast Values
 # --------------------------------------------------------------------------------------------------
@@ -641,17 +665,19 @@ def get_ifoCAST_differences(forecast_df: pd.DataFrame, eval_df: pd.DataFrame, fu
         
         # For each forecast horizon in the original row
         for quarter_offset, quarter_name in [(-1, 'Qminus1'), (0, 'Q0'), (1, 'Q1')]:
-            # Calculate the target date by shifting quarters
-            target_date = col_date + pd.DateOffset(months=3*quarter_offset)
-            
-            # Get the forecast value
-            forecast_value = forecast_df.loc[col_date, quarter_name]
-            
-            rescaled_data.append({
-                'target_date': target_date,
-                'forecast_date': col_name,
-                'forecast_value': forecast_value
-            })
+
+            if quarter_name in forecast_df.columns:
+                # Calculate the target date by shifting quarters
+                target_date = col_date + pd.DateOffset(months=3*quarter_offset)
+                
+                # Get the forecast value
+                forecast_value = forecast_df.loc[col_date, quarter_name]
+                
+                rescaled_data.append({
+                    'target_date': target_date,
+                    'forecast_date': col_name,
+                    'forecast_value': forecast_value
+                })
     
     # Convert to DataFrame
     rescaled_df = pd.DataFrame(rescaled_data)
@@ -752,6 +778,22 @@ for name, eval_df in zip(ifocast_full_eval_df_names, eval_dfs):
 
 
 
+# --------------------------------------------------------------------------------------------------
+# ifoCAST last values before release
+# --------------------------------------------------------------------------------------------------
+
+# Define names
+ifocast_last_eval_df_names = ['ifoCAst_last_rep_first',
+                          'ifoCAst_last_rep_latest',
+                          'ifoCAst_last_rep_T45',
+                          'ifoCAst_last_rep_T55']
+
+# Loop to create the eval dfs
+last_rep_eval_dfs = {}
+
+for name, eval_df in zip(ifocast_last_eval_df_names, eval_dfs):
+
+    last_rep_eval_dfs[name] = get_ifoCAST_differences(ifocast_last_values, eval_df, full_input=False)
 
 
 
@@ -798,6 +840,9 @@ for name, eval_df in zip(ifo_qoq_matched_eval_df_names, eval_dfs):
 
     # Collapse them into the desired structure
     ifo_qoq_eval_dfs[name] = collapse_quarterly_prognosis(ifo_qoq_eval_dfs[name])
+
+
+
 
 
 
@@ -980,6 +1025,58 @@ for error_name, table_name, eval_key in zip(
     ifoCast_full_error_table_dict[table_name] = error_table
 
 
+
+# --------------------------------------------------------------------------------------------------
+# ifoCAST last values before release — Evaluation and Table Creation
+# --------------------------------------------------------------------------------------------------
+
+## Filepaths for error series and tables
+ifoCast_last_rep_error_path = os.path.join(wd, '0_1_Output_Data', '5_ifoCAST_error_series_last_rep')
+os.makedirs(ifoCast_last_rep_error_path, exist_ok=True)
+
+# Error Tables
+ifoCAST_last_rep_table_path = os.path.join(table_folder, '4_ifoCAST_evaluations_last_rep')
+os.makedirs(ifoCAST_last_rep_table_path, exist_ok=True)
+
+
+## Evaluation and Table Creation
+ifoCast_last_rep_error_series_names = ['ifoCAst_errors_last_rep_first',
+                                       'ifoCAst_errors_last_rep_latest',
+                                       'ifoCAst_errors_last_rep_T45',
+                                       'ifoCAst_errors_last_rep_T55']
+
+ifoCast_last_rep_table_names = ['ifoCAst_error_tables_last_rep_first',
+                                'ifoCAst_error_tables_last_rep_latest',
+                                'ifoCAst_error_tables_last_rep_T45',
+                                'ifoCAst_error_tables_last_rep_T55']
+
+
+# Dicts to store outputs
+ifoCast_last_rep_error_series_dict = {}
+ifoCast_last_rep_error_table_dict  = {}
+
+# Create error series and tables
+for error_name, table_name, eval_key in zip(
+    ifoCast_last_rep_error_series_names, 
+    ifoCast_last_rep_table_names, 
+    ifocast_last_eval_df_names
+):
+    # Get the error series and store it
+    error_series = get_qoq_error_series(
+        last_rep_eval_dfs[eval_key], 
+        ifoCast_last_rep_error_path, 
+        file_name=f"{error_name}.xlsx"
+    )
+    ifoCast_last_rep_error_series_dict[error_name] = error_series
+
+    # Get the statistics table and store it
+    error_table = get_qoq_error_statistics_table(
+        error_series, 
+        error_name.split('_')[-1], 
+        ifoCAST_last_rep_table_path, 
+        f"{table_name}.xlsx"
+    )
+    ifoCast_last_rep_error_table_dict[table_name] = error_table
 
 
 
