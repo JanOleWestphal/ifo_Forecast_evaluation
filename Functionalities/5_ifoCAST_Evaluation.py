@@ -714,8 +714,8 @@ def get_ifoCAST_differences(forecast_df: pd.DataFrame, eval_df: pd.DataFrame, fu
 # Define names
 ifocast_filtered_eval_df_names = ['ifoCAst_Qm1_Q0_Q1_filtered_first',
                           'ifoCAst_Qm1_Q0_Q1_filtered_latest',
-                          'ifoCAst_Qm1_Q0_Q1_filtered_fT45',
-                          'ifoCAst_Qm1_Q0_Q1_filtered_fT55']
+                          'ifoCAst_Qm1_Q0_Q1_filtered_T45',
+                          'ifoCAst_Qm1_Q0_Q1_filtered_T55']
 
 # Eval against first, latest, T45 and T55
 eval_dfs = [qoq_first_eval, qoq_latest_eval, T45_eval, T55_eval]
@@ -833,7 +833,7 @@ ifo_qoq_matched_error_series_names = ['ifo_qoq_matched_errors_first',
 
 ifo_qoq_matched_table_names = ['ifo_qoq_matched_error_tables_first',
                           'ifo_qoq_matched_error_tables_latest',
-                          'ifo_qoq_matchederror_tables_T45',
+                          'ifo_qoq_matched_error_tables_T45',
                           'ifo_qoq_matched_error_tables_T55']
 
 
@@ -1020,9 +1020,9 @@ print("Visualizing error statistics ...  \n")
 ## Parent Folders
 
 # Scatter, Barplot and Series
-ifoCAST_scatter_path = os.path.join(graph_folder, '2_ifoCAST_matched_Error_Scatter')
-ifoCAST_barplot_path = os.path.join(graph_folder, '2_ifoCAST_matched_Error_Bars')
-ifoCAST_series_path = os.path.join(graph_folder, '2_ifoCAST_matched_Error_Series')
+ifoCAST_scatter_path = os.path.join(graph_folder, '2_ifoCAST_Error_Scatter')
+ifoCAST_barplot_path = os.path.join(graph_folder, '2_ifoCAST_Error_Bars')
+ifoCAST_series_path = os.path.join(graph_folder, '2_ifoCAST_Error_Series')
 
 # Store in Dict
 ifoCAST_graph_folders = {
@@ -1055,12 +1055,20 @@ for graph_type, parent_path in ifoCAST_graph_folders.items():
 
 
 
+## Iterators for dynamic result naming
+
+eval_horizons = ['first', 'latest', 'T45', 'T55']
+eval_prefixes = ['qoq_first_eval', 'qoq_latest_eval', 'T45_eval', 'T55_eval']
+
+
 
 
 
 # ==================================================================================================
 #                                      Error Bar Plots
 # ==================================================================================================
+
+print("Creating and saving ifoCAST error measure visualizations ...\n")
 
 """
 plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8), 
@@ -1086,6 +1094,8 @@ for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfo
 
         # Access table entries by horizon key
         ifoCAST_table  = ifoCast_filtered_error_table_dict.get(f'ifoCAst_error_tables_filtered_{horizon}')
+        ifoCAST_table = {"ifoCAST": ifoCAST_table} # The plotter function was built for a dict input
+
         ifo_table    = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}')
         
         if ifoCAST_table is None or ifo_table is None:
@@ -1097,6 +1107,7 @@ for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfo
             ifo_table,
             ifoCAST_table,
             metric_col=metric,
+            n_bars = 2,
             scale_by_n=False,
             show=False,
             save_path=save_path,
@@ -1118,6 +1129,8 @@ for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfo
 
         # Access table entries by horizon key
         ifoCAST_table  = ifoCast_full_error_table_dict.get(f'ifoCAst_error_tables_full_{horizon}')
+        ifoCAST_table = {"ifoCAST": ifoCAST_table} # The plotter function was built for a dict input
+        
         ifo_table    = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}')
         
         if ifoCAST_table is None or ifo_table is None:
@@ -1129,6 +1142,7 @@ for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfo
             ifo_table,
             ifoCAST_table,
             metric_col=metric,
+            n_bars = 2,
             scale_by_n=False,
             show=False,
             save_path=save_path,
@@ -1138,18 +1152,82 @@ for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfo
 
 
 
+
+
+# ==================================================================================================
+#                                      Error Scatter Plots
+# ==================================================================================================
+
+print("Creating and saving ifoCAST error scatter plots ...\n")
+
+"""
+plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8),
+                       n_bars: int = 10, show: bool = False,
+                       save_path: Optional[str] = None, save_name: Optional[str] = None):
+"""
+
+
+# --------------------------------------------------------------------------------------------------
+# Matched ifoCAST and ifo QoQ → plot_error_lines
+# --------------------------------------------------------------------------------------------------
+
+for horizon, ifo_name, ifoCAST_name, subfolder in zip(
+    eval_horizons, ifo_qoq_matched_error_series_names, ifoCast_filtered_error_series_names, subfolder_names):
+    
+    ifo_error_df = ifo_qoq_matched_error_series_dict.get(ifo_name)
+    filtered_error_df = ifoCast_filtered_error_series_dict.get(ifoCAST_name)
+    filtered_error_df = {"ifoCAST": filtered_error_df} # The plotter function was built for a dict input
+    
+    save_path = ifoCAST_paths['scatter'][subfolder]
+
+    plot_error_lines(
+        ifo_error_df,
+        filtered_error_df,
+        n_bars = 2,
+        title=f"ifoCAST_filtered_{horizon.capitalize()}",
+        show=False,
+        save_path=save_path,
+        save_name=f"0_ifoCAST_filtered_{horizon}_errors"
+    )
+
+
+# --------------------------------------------------------------------------------------------------
+# Full ifoCAST and matched ifo QoQ → plot_error_lines
+# --------------------------------------------------------------------------------------------------
+
+for horizon, ifo_name, ifoCAST_name, subfolder in zip(eval_horizons, 
+    ifo_qoq_matched_error_series_names, ifoCast_full_error_series_names, subfolder_names):
+    
+    ifo_error_df = ifo_qoq_matched_error_series_dict.get(ifo_name)
+    full_error_df = ifoCast_full_error_series_dict.get(ifoCAST_name)
+    full_error_df = {"ifoCAST": full_error_df} # The plotter function was built for a dict input
+    
+    save_path = ifoCAST_paths['scatter'][subfolder]
+
+    plot_error_lines(
+        ifo_error_df,
+        full_error_df,
+        n_bars = 2,
+        title=f"ifoCAST_full_{horizon.capitalize()}",
+        show=False,
+        save_path=save_path,
+        save_name=f"1_ifoCAST_full_{horizon}_errors"
+    )
+
+
+
+
+
 # ==================================================================================================
 #                                      Error Time Series
 # ==================================================================================================
+
+print("Creating and saving ifoCAST prediction time series ...\n")
 
 """
 plot_forecast_timeseries(*args, df_eval=None, title_prefix=None, figsize=(12, 8), 
                              show=False, save_path=None, save_name_prefix=None, select_quarters=None)
 """
-
-# Evaluation horizon metadata
-eval_horizons = ['first', 'latest', 'T45', 'T55']
-eval_prefixes = ['qoq_first_eval', 'qoq_latest_eval', 'T45_eval', 'T55_eval']
 
 
 
@@ -1164,13 +1242,15 @@ for horizon, ifo_name, ifoCAST_name, subfolder in zip(
     # Get forecast data
     ifo_qoq_df = ifo_qoq_eval_dfs.get(ifo_name)
     filtered_df = fitered_eval_dfs.get(ifoCAST_name)
+    #show(filtered_df)
+    filtered_dict = {"ifoCAST": filtered_df} # The plotter function was built for a dict input
     
     save_path = ifoCAST_paths['series'][subfolder]
 
     # Plot 
     plot_forecast_timeseries(
         ifo_qoq_df,
-        filtered_df,
+        filtered_dict,
         df_eval=None,
         title_prefix=f"ifoCAST_filtered_{horizon.capitalize()}",
         show=False,
@@ -1191,13 +1271,14 @@ for horizon, ifo_name, ifoCAST_name, subfolder in zip(
     # Get forecast data
     ifo_qoq_df = ifo_qoq_eval_dfs.get(ifo_name)
     full_df = full_eval_dfs.get(ifoCAST_name)
+    full_dict = {"ifoCAST": full_df} # The plotter function was built for a dict input
     
     save_path = ifoCAST_paths['series'][subfolder]
 
     # Plot 
     plot_forecast_timeseries(
         ifo_qoq_df,
-        full_df,
+        full_dict,
         df_eval=None,
         title_prefix=f"ifoCAST_filtered_{horizon.capitalize()}",
         show=False,
@@ -1208,67 +1289,6 @@ for horizon, ifo_name, ifoCAST_name, subfolder in zip(
 
 
 
-
-
-
-
-
-# ==================================================================================================
-#                                      Error Scatter Plots
-# ==================================================================================================
-
-"""
-plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8),
-                       n_bars: int = 10, show: bool = False,
-                       save_path: Optional[str] = None, save_name: Optional[str] = None):
-"""
-
-
-
-# --------------------------------------------------------------------------------------------------
-# Matched ifoCAST and ifo QoQ → plot_error_lines
-# --------------------------------------------------------------------------------------------------
-
-for horizon, ifo_name, ifoCAST_name, subfolder in zip(
-    eval_horizons, ifo_qoq_matched_error_series_names, ifoCast_filtered_error_series_names, subfolder_names):
-    
-    ifo_error_df = ifo_qoq_matched_error_series_dict.get(ifo_name)
-    filtered_error_df = ifoCast_filtered_error_series_dict.get(ifoCAST_name)
-    
-    save_path = ifoCAST_paths['scatter'][subfolder]
-
-    if ifo_qoq_df is not None and filtered_df is not None:
-        plot_error_lines(
-            ifo_error_df,
-            filtered_error_df,
-            title=f"ifoCAST_filtered_{horizon.capitalize()}",
-            show=False,
-            save_path=save_path,
-            save_name=f"0_ifoCAST_filtered_{horizon}_errors"
-        )
-
-
-# --------------------------------------------------------------------------------------------------
-# Full ifoCAST and matched ifo QoQ → plot_error_lines
-# --------------------------------------------------------------------------------------------------
-
-for horizon, ifo_name, ifoCAST_name, subfolder in zip(eval_horizons, 
-    ifo_qoq_matched_error_series_names, ifoCast_full_error_series_names, subfolder_names):
-    
-    ifo_error_df = ifo_qoq_matched_error_series_dict.get(ifo_name)
-    full_error_df = ifoCast_full_error_series_dict.get(ifoCAST_name)
-    
-    save_path = ifoCAST_paths['scatter'][subfolder]
-
-    if ifo_qoq_df is not None and full_df is not None:
-        plot_error_lines(
-            ifo_error_df,
-            full_error_df,
-            title=f"ifoCAST_full_{horizon.capitalize()}",
-            show=False,
-            save_path=save_path,
-            save_name=f"1_ifoCAST_full_{horizon}_errors"
-        )
 
 
 

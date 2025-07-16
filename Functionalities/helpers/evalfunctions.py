@@ -130,13 +130,18 @@ def create_qoq_evaluation_df(qoq_forecast_df, eval_vector):
 # Create a df for quarterly forecast evaluation
 # --------------------------------------------------------------------------------------------------
 
-## General version
+## ---------------------------------------------------------------------------
+## General Version for the ifo QoQ and matched ifoCAST evaluation
+## ---------------------------------------------------------------------------
 
 def collapse_quarterly_prognosis(df, Ifocast_mode=False):
     """
     Move all cols to the same rows, rename rows Q1-Qx: gets quarterly error measures based on
     forecast horizons. If Ifocast_mode=True, shift first three columns down by 1 and label index as Qminus1, Q0, Q1, ...
     """
+
+
+
     # Make a copy to avoid modifying the original DataFrame
     result_df = df.copy()
 
@@ -190,8 +195,9 @@ def collapse_quarterly_prognosis(df, Ifocast_mode=False):
     return result_df
 
 
-
+## ---------------------------------------------------------------------------
 ## Special version for ifoCAST: cannot collapse to first rows as reporting scope is varying
+## ---------------------------------------------------------------------------
 
 def collapse_full_ifocast(df):
     """
@@ -212,9 +218,10 @@ def collapse_full_ifocast(df):
     # Create result dataframe with same columns as input
     result_df = pd.DataFrame(columns=df.columns, index=['Qminus1', 'Q0', 'Q1'])
 
-
+    ## ---------------------------------------------------------------------------
     ## Helper Functions to extract datetime and quarter information
-    
+    ## ---------------------------------------------------------------------------
+
     # Helper function to extract datetime from column name (assuming first part is datetime)
     def extract_datetime_from_col(col_name):
         try:
@@ -231,9 +238,10 @@ def collapse_full_ifocast(df):
             return None
         return (dt.year, dt.quarter)
     
-
+    ## ---------------------------------------------------------------------------
     ## Loop through all cols and then through all rows to determine data structure  
-        
+    ## ---------------------------------------------------------------------------
+           
     # Process each column
     for col_idx, col in enumerate(df.columns):
             
@@ -465,6 +473,12 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
     --------
     dict: Dictionary containing all created figures
     """
+
+    ## ---------------------------------------------------------------------------
+    ## DATA PREPROCESSING
+    ## ---------------------------------------------------------------------------
+
+    ## LOAD IN DF TO PLOT
     
     # Collect all DataFrames and their names
     dfs_to_plot = []
@@ -480,7 +494,9 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
         else:
             raise ValueError("Arguments must be DataFrames or dictionaries containing DataFrames")
     
-    # Process each DataFrame to create Q0-Q9 time series
+
+    ## PROCESS EACH DATAFRAME TO CREATE Q0-Q9 TIME SERIES
+
     processed_dfs = {}
     
     for name, df in dfs_to_plot:
@@ -535,21 +551,9 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
         
         processed_dfs[name] = q_dfs
     
-    # Create color palette
-    def get_color_palette(n_series):
-        """Generate colors for Q0-Q9 series"""
-        if n_series <= 10:
-            # Use a colormap for Q0-Q9
-            cmap = plt.get_cmap("tab10")
-            return [cmap(i) for i in range(n_series)]
-        else:
-            # Use viridis for more series
-            cmap = plt.get_cmap("viridis")
-            return [cmap(i/n_series) for i in range(n_series)]
-    
-    figures = {}
-    
-    # Determine overall date range: Prefer earliest Q0 from 'ifo', fallback to global minimum
+
+
+    ## Determine overall date range: Prefer earliest Q0 from 'ifo', fallback to global minimum
     ifo_q0_start = None
     global_q0_start = None
 
@@ -582,8 +586,29 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
     
     # Determine which quarters to plot
     quarters_to_plot = list(range(10)) if select_quarters is None else select_quarters
+
+
+    ## Create color palette for plotting
+    def get_color_palette(n_series):
+        """Generate colors for Q0-Q9 series"""
+        if n_series <= 10:
+            # Use a colormap for Q0-Q9
+            cmap = plt.get_cmap("tab10")
+            return [cmap(i) for i in range(n_series)]
+        else:
+            # Use viridis for more series
+            cmap = plt.get_cmap("viridis")
+            return [cmap(i/n_series) for i in range(n_series)]
     
-    # Plot 1: For each input DataFrame, plot all Q0-Q9 against evaluation
+
+    ## Get dict to store plots
+    figures = {}
+
+
+    ## ---------------------------------------------------------------------------
+    ## Plot 1: For each input DataFrame, plot all Q0-Q9 against evaluation
+    ## ---------------------------------------------------------------------------
+
     for name, q_dfs in processed_dfs.items():
         fig, ax = plt.subplots(figsize=figsize)
         
@@ -625,7 +650,11 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
 
         plt.close()
     
-    # Plot 2: For each Q0-Q9, plot across all input DataFrames (only selected quarters)
+
+    ## ---------------------------------------------------------------------------
+    ## Plot 2: For each Q0-Q9, plot across all input DataFrames (only selected quarters)
+    ## ---------------------------------------------------------------------------
+
     for q in quarters_to_plot:
         q_key = f'Q{q}'
         fig, ax = plt.subplots(figsize=figsize)
@@ -642,7 +671,7 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
                 # Create legend label
                 if 'ifo' in name.lower():
                     legend_label = f'ifo'# {q_key} ahead'
-                elif any(tag in name.lower() for tag in ['ar', 'sma', 'average']):
+                elif any(tag in name.lower() for tag in ['ar', 'sma', 'average', 'ifocast']):
                     # Strip trailing underscore + number
                     legend_label = f"{re.sub(r'_\d+$', '', name)}" #{q_key} ahead"
                 else:
@@ -675,7 +704,10 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
         plt.close()
     
 
-    # Plot 3: Combined plot showing all selected quarters from all DataFrames
+    ## ---------------------------------------------------------------------------
+    ## Plot 3: Combined plot showing all selected quarters from all DataFrames
+    ## ---------------------------------------------------------------------------
+
     if len(quarters_to_plot) > 0:
         fig, ax = plt.subplots(figsize=figsize)
         
@@ -824,11 +856,13 @@ def plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8
     colors = []
     
     # Count non-ifo entries for color scaling
-    non_ifo_count = sum(1 for name in df_names if 'ifo' not in name.lower())
+    non_ifo_count = sum(1 for name in df_names if 'ifo' not in name.lower() or 'ifocast' in name.lower())
     non_ifo_idx = 0
     
     for name in df_names:
-        if 'ifo' in name.lower():
+        if 'ifocast' in name.lower():
+            colors.append('#703316')
+        elif 'ifo' in name.lower():
             colors.append('#003366')  # dark blue for ifo
         else:
             # Sample from the dark end of orange colormap (0.7 to 1.0 range)
@@ -901,6 +935,9 @@ def plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8
     # Show plot if specified
     if show:
         plt.show()
+
+    # Close to save memory
+    plt.close()
     
     return fig, ax
 
@@ -996,7 +1033,10 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
     colors = []
 
     for i, (name, _) in enumerate(dfs_to_plot):
-        if 'ifo' in name.lower():
+        if 'ifocast' in name.lower():
+            colors.append('#703316')
+
+        elif 'ifo' in name.lower():
             colors.append('#003366')  # dark blue
         else:
             # Sample from the dark end (closer to 0.8–1.0 in colormap)
@@ -1011,11 +1051,12 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
         values = [df.loc[q, metric_col] if q in df.index else np.nan for q in quarters]
         
         # Create legend label based on DataFrame name
-        if 'ifo' in name.lower():
-            legend_label = 'ifo'
-        elif any(tag in name.lower() for tag in ['ar', 'sma', 'average']):
+        if any(tag in name.lower() for tag in ['ar', 'sma', 'average', 'ifocast']):
             # Strip trailing underscore + number (e.g. "_2", "_10", etc.)
             legend_label = re.sub(r'_\d+$', '', name)
+        elif  'ifo' in name.lower():
+            legend_label = 'ifo'
+
         else:
             legend_label = name
         
@@ -1064,5 +1105,8 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
     if save_path is not None and save_name is not None:
         fig.savefig(os.path.join(save_path, save_name), dpi=300, bbox_inches='tight')
     
+
+    # Close to save memory
+    plt.close()
     
     return fig, ax
