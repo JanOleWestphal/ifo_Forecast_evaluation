@@ -210,6 +210,8 @@ def load_excels_to_dict(folder_path):
     return dfs
 """
 
+## 
+
 
 # --------------------------------------------------------------------------------------------------
 # Load Evaluation Data
@@ -797,12 +799,38 @@ for name, eval_df in zip(ifocast_last_eval_df_names, eval_dfs):
 
 
 
+
+
+
 # --------------------------------------------------------------------------------------------------
-# Naive Forecats
+# Naive QoQ Forecasts matched
 # --------------------------------------------------------------------------------------------------
-"""
-Could be added here as well
-"""
+
+# Dict to store the results
+naive_qoq_eval_dfs = {}
+
+# Loop through all naive forecast variants
+for name, naive_df in naive_qoq_dfs_dict.items():
+
+    # Filter for ifoCAST dates
+    naive_df_filtered = naive_df.loc[:, 
+        naive_df.columns.to_series().dt.to_period('Q').isin(
+            ifoCAst_Qm1_Q0_Q1_filtered.T.columns.to_series().dt.to_period('Q')
+        )
+    ]
+
+    # Loop over evaluation horizons
+    for eval_name, eval_df in zip(['first', 'latest', 'T45', 'T55'], eval_dfs):
+
+        key = f"{name}_matched_{eval_name}"
+
+        # Create and collapse evaluation DataFrame
+        matched_df = create_qoq_evaluation_df(naive_df_filtered, eval_df)
+        collapsed_df = collapse_quarterly_prognosis(matched_df)
+
+        # Store in dictionary
+        naive_qoq_eval_dfs[key] = collapsed_df
+
 
 
 
@@ -855,6 +883,52 @@ for name, eval_df in zip(ifo_qoq_matched_eval_df_names, eval_dfs):
 # ==================================================================================================
 # Get Error Statistics and Tables
 # ==================================================================================================
+
+# --------------------------------------------------------------------------------------------------
+# Naive QoQ Forecasts → Error Series and Tables
+# --------------------------------------------------------------------------------------------------
+
+# Paths (reuse or redefine as needed)
+naive_qoq_matched_error_path = os.path.join(wd, '0_1_Output_Data', '5_naive_qoq_error_series_matched_to_ifoCAST')
+os.makedirs(naive_qoq_matched_error_path, exist_ok=True)
+
+naive_qoq_matched_table_path = os.path.join(table_folder, '4_naive_QoQ_matched_to_ifoCAST')
+os.makedirs(naive_qoq_matched_table_path, exist_ok=True)
+
+# Dicts to store outputs
+naive_qoq_matched_error_series_dict = {}
+naive_qoq_matched_error_table_dict  = {}
+
+# Loop over each entry in naive_qoq_eval_dfs
+for eval_key, df in naive_qoq_eval_dfs.items():
+    # eval_key example: 'naive_mean_matched_first'
+    parts = eval_key.split('_')
+    horizon = parts[-1]                       # 'first', 'latest', 'T45', or 'T55'
+    prefix  = '_'.join(parts[:-1])            # 'naive_mean_matched'
+    
+    # Build standardized names
+    error_name = f"{prefix}_errors_{horizon}"         # e.g. 'naive_mean_matched_errors_first'
+    table_name = f"{prefix}_error_tables_{horizon}"   # e.g. 'naive_mean_matched_error_tables_first'
+    
+    # 1) Generate and save the error series
+    error_series = get_qoq_error_series(
+        df,
+        naive_qoq_matched_error_path,
+        file_name=f"{error_name}.xlsx"
+    )
+    naive_qoq_matched_error_series_dict[error_name] = error_series
+
+    # 2) Generate and save the statistics table
+    error_table = get_qoq_error_statistics_table(
+        error_series,
+        horizon,
+        naive_qoq_matched_table_path,
+        f"{table_name}.xlsx"
+    )
+    naive_qoq_matched_error_table_dict[table_name] = error_table
+
+
+
 
 
 # --------------------------------------------------------------------------------------------------
