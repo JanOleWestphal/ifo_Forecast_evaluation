@@ -108,11 +108,15 @@ naming_convention = settings.naming_convention
 evaluation_limit_year = settings.evaluation_limit_year
 evaluation_limit_quarter = settings.evaluation_limit_quarter    
 
+# Not used at the moment
+"""
 # Define the horizon of first releases which should be evaluated: available from 1995-Q3 onwards
-first_release_limit_year = settings.first_release_limit_year
-first_release_limit_quarter = settings.first_release_limit_quarter
+first_release_lower_limit_year = settings.first_release_lower_limit_year
+first_release_lower_limit_quarter = settings.first_release_lower_limit_quarter
 
-
+first_release_upper_limit_year = settings.first_release_upper_limit_year
+first_release_upper_limit_quarter = settings.first_release_upper_limit_quarter
+"""
 
 
 

@@ -61,15 +61,28 @@ def folder_clear(folder_path):
 # Select Evaluation timeframe
 # ==================================================================================================
 
-## Filter columns: only keep columns >= first_release_limit_year/quarter
+## Filter columns: only keep columns >= first_release_lower_limit_year/quarter
 def filter_first_release_limit(df, 
-                               first_release_limit_year = settings.first_release_limit_year,
-                                first_release_limit_quarter = settings.first_release_limit_quarter):
+                               
+                               first_release_lower_limit_year = settings.first_release_lower_limit_year,
+                                first_release_lower_limit_quarter = settings.first_release_lower_limit_quarter,
+
+                                first_release_upper_limit_year = settings.first_release_upper_limit_year,
+                                first_release_upper_limit_quarter = settings.first_release_upper_limit_quarter
+                                ):
 
     # Filter cols prior to first release limit
     col_mask = [
-        (col.year > first_release_limit_year) or
-        (col.year == first_release_limit_year and (col.quarter >= first_release_limit_quarter))
+
+        # Filter lower limit
+        ((col.year > first_release_lower_limit_year) or
+        (col.year == first_release_lower_limit_year and (col.quarter >= first_release_lower_limit_quarter)))
+
+        and # Filter upper limit
+        ((col.year < first_release_upper_limit_year) or
+        (col.year == first_release_upper_limit_year and (col.quarter <= first_release_upper_limit_quarter)))
+
+
         for col in df.columns
     ]
 

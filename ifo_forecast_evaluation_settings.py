@@ -49,34 +49,54 @@ api_pull = True # True or False; only set False if no internet connection
 
 
 
+
+
 # ==================================================================================================
 #                                     EVALUATION SETTINGS
 # ==================================================================================================
 
-# Features to be developed:
-"""
-- Option what to 
 
-include in iteratively genereated result graphs
+# --------------------------------------------------------------------------------------------------
+#                                     OUTLIER SETTINGS
+# --------------------------------------------------------------------------------------------------
+
+# Drop Outliers: Decide to drop forecast erros exceeding a certain threshhold
+# Designed to analyse the Forecsat Series wihtput big crisis (2009 and two Covid Quarters)
+drop_error_outliers = True # True or False
+
+
+
+## Select an evaluation intervall, e.g. 2010-Q1 - 2019-Q4:
+
 """
+NOTE: 
+- Coosing a quarter other than 1 omits the entire year for YoY calculations
+- This is not called in the ifoCAST evaluation, but could be changed if needed
+"""
+
+# Define the horizon of first releases which should be evaluated from below:
+first_release_lower_limit_year = 1970            # from 1989 onwards; set as integer
+first_release_lower_limit_quarter = 1            # 1,2,3 or 4; set as integer
+
+# Define the horizon of first releases which should be evaluated from below:
+first_release_upper_limit_year = 2100           # from 1989 onwards; set as integer
+first_release_upper_limit_quarter = 4            # 1,2,3 or 4; set as integer
+
+
+
+
+# --------------------------------------------------------------------------------------------------
+#                                        DATA SETTINGS
+# --------------------------------------------------------------------------------------------------
 
 # Decide wether to extend the available real-time data by using the earliest available data release 
 # Q2-1995 and imputing it backwards to Q1-1989 (True)
 extend_rt_data_backwards = True # True or False
 
-
-
 # Define which quarter of which year should be the earliest data point, available from Q1-1970 onwards
 evaluation_limit_year = 1970            # from 1970 onwards; set as integer
 evaluation_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
-# Define the horizon of first releases which should be evaluated: available from 1995-Q3 onwards
-first_release_limit_year = 1970            # from 1970 onwards; set as integer
-first_release_limit_quarter = 1            # 1,2,3 or 4; set as integer
-
-"""
-NOTE: Coosing a quarter other than 1 omits the entire year for YoY calculations
-"""
 
 # Define whether to match the dates of available ifo QoQ Forecasts for the naive forecaster
 match_ifo_naive_dates = True  # True or False
