@@ -38,6 +38,7 @@ run_ifoCAST_evaluation = True  # True or False
 
 ## Decide whether to overwrite previous output (always overwriten if same functionality is executed)
 clear_result_folders = True   # True or False
+"""Not fully implemented yet, delete results by hand if you want to be sure"""
 
 # ==================================================================================================
 #                                         DATA SETTINGS
@@ -54,7 +55,9 @@ api_pull = True # True or False; only set False if no internet connection
 
 # Features to be developed:
 """
-- Option what to include in iteratively genereated result graphs
+- Option what to 
+
+include in iteratively genereated result graphs
 """
 
 # Decide wether to extend the available real-time data by using the earliest available data release 
@@ -100,7 +103,7 @@ models = ['AR', 'AVERAGE', 'SMA']
 AR_orders = [2]
 
 # For AR model: set the memory of the agent (timeframe the model is estimated on); list of int or 'FULL'
-AR_horizons = [50]
+AR_horizons = [50, 100]
 """
 Note:
 -> unstable estimates for 2020_Q3 (release date, last observation 2020_Q2) for below 48
@@ -109,7 +112,7 @@ Note:
 """
 
 # For average-based models: set time frame over which the agent averages in quarters; list of int or 'FULL'
-average_horizons = [2]
+average_horizons = [1,2,10,20]
 
 
 # Set how far the agent predicts into the future; int, NO LIST ITERATION

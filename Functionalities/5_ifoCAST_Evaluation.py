@@ -1322,6 +1322,47 @@ for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfo
 
 
 
+# --------------------------------------------------------------------------------------------------
+# Plot: ifoCAST Last Values Before Release vs Matched ifo QoQ
+# --------------------------------------------------------------------------------------------------
+
+# Loop over metrics and evaluation horizons
+for metric in ['ME', 'MAE', 'MSE', 'RMSE', 'SE']:
+
+    for horizon, foldername in zip(eval_horizon_keys, subfolder_names):
+        
+        save_path = ifoCAST_paths['barplot'][foldername]
+
+        # Access the relevant table entries
+        ifoCAST_table = ifoCast_last_rep_error_table_dict.get(f'ifoCAst_error_tables_last_rep_{horizon}')
+        # Rename the Qminus1 col to Q0 for consistency of the plotter function
+        ifoCAST_table.rename(index={"Qminus1": "Q0"}, inplace=True)
+        ifoCAST_table = {"ifoCAST": ifoCAST_table}  # plot function expects a dict
+
+        ifo_table = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}')
+
+        if ifoCAST_table is None or ifo_table is None:
+            print(f"\n WARNING: {horizon} - missing table. \n")
+            continue
+
+        # Call plotting function
+        plot_quarterly_metrics(
+            ifo_table,
+            ifoCAST_table,
+            metric_col=metric,
+            n_bars=1,
+            scale_by_n=False,
+            show=False,
+            save_path=save_path,
+            save_name=f'0_ifo_ifoCAST_lastRep_Quarterly_{metric}_{horizon}_eval.png'
+        )
+
+
+
+
+
+
+
 
 
 
@@ -1362,6 +1403,8 @@ for horizon, ifo_name, ifoCAST_name, subfolder in zip(
     )
 
 
+
+
 # --------------------------------------------------------------------------------------------------
 # Full ifoCAST and matched ifo QoQ → plot_error_lines
 # --------------------------------------------------------------------------------------------------
@@ -1384,6 +1427,42 @@ for horizon, ifo_name, ifoCAST_name, subfolder in zip(eval_horizons,
         save_path=save_path,
         save_name=f"1_ifoCAST_full_{horizon}_errors"
     )
+
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Last-Rep ifoCAST and matched ifo QoQ → plot_error_lines
+# --------------------------------------------------------------------------------------------------
+
+for horizon, ifo_name, ifoCAST_name, subfolder in zip(
+    eval_horizons, 
+    ifo_qoq_matched_error_series_names, 
+    ifoCast_last_rep_error_series_names, 
+    subfolder_names
+):
+    # Get the error series
+    ifo_error_df = ifo_qoq_matched_error_series_dict.get(ifo_name)
+    last_rep_error_df = ifoCast_last_rep_error_series_dict.get(ifoCAST_name)
+
+    # Rename the Qminus1 col to Q0 for consistency of the plotter function
+    last_rep_error_df.rename(columns={"Qminus1": "Q0"}, inplace=True)
+    last_rep_error_df = {"ifoCAST": last_rep_error_df}  # dict input for plotter
+
+    # Save path
+    save_path = ifoCAST_paths['scatter'][subfolder]
+
+    # Plot
+    plot_error_lines(
+        ifo_error_df,
+        last_rep_error_df,
+        n_bars=1, # Set this to 1
+        title=f"ifoCAST Last Release Errors against {horizon.capitalize()}",
+        show=False,
+        save_path=save_path,
+        save_name=f"1_ifoCAST_lastRep_{horizon}_errors"
+    )
+
 
 
 
