@@ -354,6 +354,64 @@ def get_qoq_error_series(qoq_eval_df, save_path=None, file_name=None):
     return error_by_horizon 
 
 
+
+# --------------------------------------------------------------------------------------------------
+# DECIDE WHETHER TO DROP ERRORS EXCEEDING A CERTAIN THRESHHOLD
+# --------------------------------------------------------------------------------------------------
+
+def drop_outliers(error_series, sd_cols=4, sd_threshold=3):
+    """
+    For the first `sd_cols` columns, drop values exceeding `sd_threshold * sd(col)`.
+    For all later columns, use the last computed sd for thresholding.
+    Prints how many observations were dropped per column.
+
+    Parameters
+    ----------
+    error_series : pd.DataFrame
+        DataFrame with datetime rows and Qx columns.
+    sd_cols : int
+        Number of columns to compute individual standard deviations for.
+    sd_threshold : float
+        Threshold multiplier for determining outliers.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with outliers replaced by NaN.
+    """
+
+    print(f"\nDropping outliers in Error df of shape {error_series.shape} when exceeding sd x {sd_threshold}")
+
+    # Setup
+    result = error_series.copy()
+    last_sd = None
+
+    # Get col-wise standard errors, option to use the lastest sd for later cols with little observations
+    for i, col in enumerate(error_series.columns):
+        if i < sd_cols:
+            col_sd = error_series[col].std(skipna=True)
+            last_sd = col_sd
+        else:
+            col_sd = last_sd
+
+        threshold = sd_threshold * col_sd
+        mask = result[col].abs() > threshold
+        dropped_count = mask.sum()
+
+        if dropped_count > 0:
+            print(f"{col}: Dropped {dropped_count} observations "
+                  f"(>{sd_threshold} × {col_sd:.4f} = {threshold:.4f})")
+        else:
+            print(f"{col}: No observations dropped")
+
+        result[col] = result[col].mask(mask)
+
+    return result
+
+
+
+
+
 # --------------------------------------------------------------------------------------------------
 # Get an Excel/df with error statistics by forecast horizon
 # --------------------------------------------------------------------------------------------------
@@ -509,12 +567,12 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
             raise ValueError("Arguments must be DataFrames or dictionaries containing DataFrames")
     
 
+
+
     ## PROCESS EACH DATAFRAME TO CREATE Q0-Q9 TIME SERIES
 
     # Drop Qminus1 row for the ifoCAST case
     
-
-
     processed_dfs = {}
     
     for name, df in dfs_to_plot:
@@ -580,38 +638,57 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
         
         processed_dfs[name] = q_dfs
     
-    """Q1-Q9 ggf falsch geshiftet"""
+    
 
-    ## Determine overall date range: Prefer earliest Q0 from 'ifo', fallback to global minimum
+    # ———— Determine overall start date ————
+    # Prefer the earliest Q0 from the 'ifo' series, else global minimum
     ifo_q0_start = None
     global_q0_start = None
-
     for name, q_dfs in processed_dfs.items():
         if 'Q0' in q_dfs and not q_dfs['Q0'].empty:
             q0_start = q_dfs['Q0'].index.min()
-            # Check for 'ifo'
             if name.lower() == 'ifo':
                 ifo_q0_start = q0_start
             if global_q0_start is None or q0_start < global_q0_start:
                 global_q0_start = q0_start
-
-    # Prioritise ifo-based starting date if available
     earliest_start = ifo_q0_start if ifo_q0_start is not None else global_q0_start
 
-    # ———— Apply the cut‑off to every Q‑series ————
-    if earliest_start is not None:
+    # ———— Also determine the last available date across all Q‑series ————
+    latest_end = None
+    for name, q_dfs in processed_dfs.items():
+        for q_df in q_dfs.values():
+            if not q_df.empty:
+                last_date = q_df.index.max()
+                # pick the most recent (largest) last_date across all series
+                if latest_end is None or last_date > latest_end:
+                    latest_end = last_date
+
+    # ———— Apply the two‑sided cut‑off to every Q‑series ————
+    if earliest_start is not None and latest_end is not None:
         for name, q_dfs in processed_dfs.items():
             for q_key, q_df in q_dfs.items():
-                # only keep dates ≥ earliest_start
                 if not q_df.empty:
-                    q_dfs[q_key] = q_df[q_df.index >= earliest_start]
-    
-    # Filter evaluation data to start from earliest Q0 date
+                    q_dfs[q_key] = q_df[
+                        (q_df.index >= earliest_start) &
+                        (q_df.index <= latest_end)
+                    ]
+
+    # ———— Filter evaluation data to [earliest_start, latest_end] ————
     eval_filtered = None
-    if df_eval is not None and earliest_start is not None:
+    if df_eval is not None and earliest_start is not None and latest_end is not None:
+        eval_filtered = df_eval[
+            (df_eval.index >= earliest_start) &
+            (df_eval.index <= latest_end)
+        ]
+    elif df_eval is not None and earliest_start is not None:
         eval_filtered = df_eval[df_eval.index >= earliest_start]
     elif df_eval is not None:
         eval_filtered = df_eval
+
+
+
+
+    ## Prepare Plots
     
     # Determine which quarters to plot
     quarters_to_plot = list(range(10)) if select_quarters is None else select_quarters

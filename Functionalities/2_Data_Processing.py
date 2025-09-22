@@ -6,7 +6,8 @@
 # Description:  Creates the dataframes used in the project
 #               Stores them in Folder 0_0_Data/2_Processed_Data.
 #
-#               Processes both the real-time and historic GDP-data inputs as well as the forecasts.
+#               Processes both the real-time and historic GDP-data inputs, turns them into a joint 
+#               dataframe and creates evaluation time series.
 #               New Forecasts may be included by updating the respective files in the Subfolder
 #               0_0_Data\0_Forecast_Inputs
 # ==================================================================================================
@@ -151,6 +152,7 @@ def get_yoy(df):
     """
     Make sure to apply this function to a qoq data frame
     """
+    
     # Get growth factors (1+g), correct scale
     df_factor = 1 + (df/100)
 

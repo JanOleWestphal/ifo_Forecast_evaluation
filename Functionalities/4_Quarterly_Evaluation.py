@@ -99,6 +99,10 @@ forecast_horizon = settings.forecast_horizon
 resultfolder_name_n_forecast = settings.resultfolder_name_n_forecast   
 naming_convention = settings.naming_convention
 
+# Select Format of Output Graphs
+QoQ_eval_n_bars = settings.QoQ_eval_n_bars
+
+
 # Select timeframes
 evaluation_limit_year = settings.evaluation_limit_year
 evaluation_limit_quarter = settings.evaluation_limit_quarter    
@@ -230,6 +234,50 @@ qoq_rev = pd.read_excel(qoq_path_rev, index_col=0)
 # -------------------------------------------------------------------------------------------------#
 
 
+
+# ==================================================================================================
+# Select whether to omit Naive Forecaster Observations if no ifo Forecast is available
+# ==================================================================================================
+
+if settings.match_ifo_naive_dates:
+
+    for key, naive_df in naive_qoq_dfs_dict.items():
+        
+        # Convert to datetime
+        naive_cols_dt = pd.to_datetime(naive_df.columns)
+        naive_rows_dt = pd.to_datetime(naive_df.index)
+        ifo_cols_dt = pd.to_datetime(ifo_qoq_forecasts.columns)
+        ifo_rows_dt = pd.to_datetime(ifo_qoq_forecasts.index)
+
+        # Build sets of year-quarter pairs for IFO
+        ifo_col_quarters = {(d.year, d.quarter) for d in ifo_cols_dt}
+        ifo_row_quarters = {(d.year, d.quarter) for d in ifo_rows_dt}
+
+        # Keep only valid naive columns (year-quarter match)
+        valid_cols = [
+            col for col in naive_df.columns
+            if (pd.to_datetime(col).year, pd.to_datetime(col).quarter) in ifo_col_quarters
+        ]
+
+        # Start filtered df
+        filtered_df = pd.DataFrame(index=naive_df.index)
+
+        for col in valid_cols:
+            col_dt = pd.to_datetime(col)
+
+            # For this col, filter rows by year-quarter match with IFO rows
+            valid_rows = [
+                row for row in naive_df.index
+                if (pd.to_datetime(row).year, pd.to_datetime(row).quarter) in ifo_row_quarters
+            ]
+
+            # Assign truncated series
+            filtered_df[col] = naive_df.loc[valid_rows, col]
+
+        # Save back
+        naive_qoq_dfs_dict[key] = filtered_df
+
+
 # ==================================================================================================
 # Store full dataset for full Error Time Series
 # ==================================================================================================
@@ -253,35 +301,10 @@ for key, val in naive_qoq_dfs_dict.items():
     naive_qoq_dfs_dict[key] = val
 
 
-# ==================================================================================================
-# Select whether to omit Naive Forecaster Observations if no ifo Forecast is available
-# ==================================================================================================
 
-if settings.match_ifo_naive_dates:
 
-    for key, naive_df in naive_qoq_dfs_dict.items():
-        
-        # Convert columns to datetime for proper quarter comparison
-        naive_cols_dt = pd.to_datetime(naive_df.columns)
-        ifo_cols_dt = pd.to_datetime(ifo_qoq_forecasts.columns)
-        
-        # Find columns in naive_df that are in the same quarter as any column in ifo_qoq_forecasts
-        valid_cols = []
-        for naive_col in naive_df.columns:
-            naive_col_dt = pd.to_datetime(naive_col)
-            naive_quarter = (naive_col_dt.year, naive_col_dt.quarter)
-            
-            # Check if this quarter exists in ifo_qoq_forecasts
-            quarter_match = any(
-                (ifo_col_dt.year, ifo_col_dt.quarter) == naive_quarter
-                for ifo_col_dt in ifo_cols_dt
-            )
-            
-            if quarter_match:
-                valid_cols.append(naive_col)
-        
-        # Filter naive_df to keep only columns that match quarters in ifo_qoq_forecasts
-        naive_qoq_dfs_dict[key] = naive_df[valid_cols]
+
+
 
 
 
@@ -337,6 +360,7 @@ for name, df in naive_qoq_dfs_dict.items():
 
 
 
+
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                                    Analyzing Error Measures                                      #
@@ -344,7 +368,7 @@ for name, df in naive_qoq_dfs_dict.items():
 # -------------------------------------------------------------------------------------------------#
 
 
-print("Computing error statistics (this takes a significant amount of time) ...  \n")
+print("Computing error statistics ...  \n")
 
 
 
@@ -361,6 +385,12 @@ os.makedirs(ifo_qoq_error_path, exist_ok=True)
 ifo_qoq_table_path = os.path.join(table_folder, '2_ifo_qoq_evaluations')
 os.makedirs(ifo_qoq_table_path, exist_ok=True)
 
+## Clear
+if settings.clear_result_folders:
+
+    for folder in [ifo_qoq_error_path, ifo_qoq_table_path]:
+        
+        folder_clear(folder)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -376,7 +406,7 @@ ifo_qoq_errors_first = get_qoq_error_series(
 ifo_qoq_error_table_first = get_qoq_error_statistics_table(ifo_qoq_errors_first,
                                                            'first_eval', ifo_qoq_table_path, 
                                                            'ifo_qoq_forecast_error_table_first_eval.xlsx')
-
+#show(ifo_qoq_error_table_first)
 
 ## Evaluate against latest releases
 ifo_qoq_errors_latest = get_qoq_error_series(
@@ -407,6 +437,13 @@ os.makedirs(naive_qoq_error_path, exist_ok=True)
 naive_qoq_table_path = os.path.join(table_folder, '3_naive_forecaster_qoq_evaluations')
 os.makedirs(ifo_qoq_table_path, exist_ok=True)
 
+## Clear
+if settings.clear_result_folders:
+
+    for folder in [naive_qoq_error_path, naive_qoq_table_path]:
+        
+        folder_clear(folder)
+
 
 
 # --------------------------------------------------------------------------------------------------
@@ -431,6 +468,8 @@ for name, df in naive_qoq_first_eval_dfs_collapsed.items():
                                                         naive_qoq_first_eval_error_series_dict[name],
                                                         'first_eval',naive_qoq_table_path, 
                                                         f'{name}_qoq_forecast_error_table_first_eval.xlsx')
+
+#show(next(iter(naive_qoq_first_eval_error_tables_dict.values())))
 
 
 
@@ -468,106 +507,362 @@ for name, df in naive_qoq_latest_eval_dfs_collapsed.items():
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
-
-# ==================================================================================================
-#                                       GET FORECAST TABLES
-# ==================================================================================================
-
-
-# --------------------------------------------------------------------------------------------------
-# ifo QoQ FORECASTS
-# --------------------------------------------------------------------------------------------------
-
-## Evalaute against First Release
-ifo_qoq_forecasts_eval_first_full = create_qoq_evaluation_df(ifo_qoq_forecasts_full, qoq_first_eval)
-ifo_qoq_forecasts_eval_first_collapsed_full = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_first_full)
-
-#show(ifo_qoq_forecasts_eval_first_full)
-
-## Evalaute against Latest Release
-ifo_qoq_forecasts_eval_latest_full = create_qoq_evaluation_df(ifo_qoq_forecasts_full, qoq_latest_eval)
-ifo_qoq_forecasts_eval_latest_collapsed_full = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_latest_full)
+def qoq_error_evaluation_pipeline(filter_mode=False, sd_cols=5, sd_threshold=0.05, 
+                                  ifo_qoq_errors_first= ifo_qoq_errors_first, ifo_qoq_errors_latest= ifo_qoq_errors_latest,
+                                  naive_qoq_first_eval_error_series_dict=naive_qoq_first_eval_error_series_dict,
+                                  naive_qoq_latest_eval_error_series_dict=naive_qoq_latest_eval_error_series_dict,):
 
 
-# --------------------------------------------------------------------------------------------------
-# NAIVE QoQ FORECASTS
-# --------------------------------------------------------------------------------------------------
+    # ==================================================================================================
+    #                                          DYNAMIC NAMING
+    # ==================================================================================================
 
-# Store Resuls in a dictionary
-naive_qoq_first_eval_dfs_full = {}
-naive_qoq_first_eval_dfs_collapsed_full = {} 
+    ## Dynamic result naming
+    filter_str = "_sd_filtered" if filter_mode else ""
 
-naive_qoq_latest_eval_dfs_full = {}
-naive_qoq_latest_eval_dfs_collapsed_full = {} 
 
-# Loop over all available models
-for name, df in naive_qoq_dfs_dict_full.items():
+
+
+    # ==================================================================================================
+    #                                       FILTER ERRORS
+    # ==================================================================================================
+
+    if filter_mode:
+
+        ## Filter error Series
+
+        # ifo
+        ifo_qoq_errors_first = drop_outliers(ifo_qoq_errors_first, sd_cols=sd_cols, sd_threshold=sd_threshold)
+        ifo_qoq_errors_latest = drop_outliers(ifo_qoq_errors_latest, sd_cols=sd_cols, sd_threshold=sd_threshold)
+
+        # naive — loop over dictionary structure
+        naive_qoq_first_eval_error_series_dict = {
+            name: drop_outliers(df, sd_cols=sd_cols, sd_threshold=sd_threshold)
+            for name, df in naive_qoq_first_eval_error_series_dict.items()
+        }
+        naive_qoq_latest_eval_error_series_dict = {
+            name: drop_outliers(df, sd_cols=sd_cols, sd_threshold=sd_threshold)
+            for name, df in naive_qoq_latest_eval_error_series_dict.items()
+        }
+
+
+
+
+
+
+
+
+    # ==================================================================================================
+    #                                       GET FORECAST TABLES
+    # ==================================================================================================
+
+    # --------------------------------------------------------------------------------------------------
+    # ifo QoQ FORECASTS
+    # --------------------------------------------------------------------------------------------------
+
+    ## Evalaute against First Release
+    ifo_qoq_forecasts_eval_first_full = create_qoq_evaluation_df(ifo_qoq_forecasts_full, qoq_first_eval)
+    ifo_qoq_forecasts_eval_first_collapsed_full = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_first_full)
+
+    #show(ifo_qoq_forecasts_eval_first_full)
+
+    ## Evalaute against Latest Release
+    ifo_qoq_forecasts_eval_latest_full = create_qoq_evaluation_df(ifo_qoq_forecasts_full, qoq_latest_eval)
+    ifo_qoq_forecasts_eval_latest_collapsed_full = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_latest_full)
+
+
+    # --------------------------------------------------------------------------------------------------
+    # NAIVE QoQ FORECASTS
+    # --------------------------------------------------------------------------------------------------
+
+    # Store Resuls in a dictionary
+    naive_qoq_first_eval_dfs_full = {}
+    naive_qoq_first_eval_dfs_collapsed_full = {} 
+
+    naive_qoq_latest_eval_dfs_full = {}
+    naive_qoq_latest_eval_dfs_collapsed_full = {} 
+
+    # Loop over all available models
+    for name, df in naive_qoq_dfs_dict_full.items():
+        
+        ## Evaluate against first release
+        naive_qoq_first_eval_dfs_full[name] = create_qoq_evaluation_df(df, qoq_first_eval)
+        naive_qoq_first_eval_dfs_collapsed_full[name] = collapse_quarterly_prognosis(naive_qoq_first_eval_dfs_full[name])
+
+        ## Evaluate against latest release
+        naive_qoq_latest_eval_dfs_full[name] = create_qoq_evaluation_df(df, qoq_latest_eval)
+        naive_qoq_latest_eval_dfs_collapsed_full[name] = collapse_quarterly_prognosis(naive_qoq_latest_eval_dfs_full[name])
+
+
+
+
+    # ==================================================================================================
+    # ifo QoQ FORECASTS
+    # ==================================================================================================
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Evaluate the ifo qoq Forecasts
+    # --------------------------------------------------------------------------------------------------
+
+    ## Evaluate against first releases
+    ifo_qoq_errors_first_full = get_qoq_error_series(ifo_qoq_forecasts_eval_first_collapsed_full)
+    if filter_mode:
+        ifo_qoq_errors_first_full = drop_outliers(ifo_qoq_errors_first_full, sd_cols=sd_cols, sd_threshold=sd_threshold)
+
+    # Get Table
+    ifo_qoq_error_table_first_full = get_qoq_error_statistics_table(ifo_qoq_errors_first_full)
+    #show(ifo_qoq_error_table_first_full)
+
+    ## Evaluate against latest releases
+    ifo_qoq_errors_latest_full = get_qoq_error_series(ifo_qoq_forecasts_eval_latest_collapsed_full)
+    if filter_mode:
+        ifo_qoq_errors_latest_full = drop_outliers(ifo_qoq_errors_latest_full, sd_cols=sd_cols, sd_threshold=sd_threshold)
+
+    # Get Table
+    ifo_qoq_error_table_latest_full = get_qoq_error_statistics_table(ifo_qoq_errors_latest_full)
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Evaluate the naive qoq Forecasts
+    # --------------------------------------------------------------------------------------------------
+
+
+    ## Evaluate against first releases
+
+    # Get Result Dictionaries
+    naive_qoq_first_eval_error_series_dict_full = {}
+    naive_qoq_first_eval_error_tables_dict_full = {}
+
+    # Run evaluation loop over all models
+    for name, df in naive_qoq_first_eval_dfs_collapsed_full.items():
+
+        naive_qoq_first_eval_error_series_dict_full[name] = get_qoq_error_series(df)
+
+        if filter_mode:
+            naive_qoq_first_eval_error_series_dict_full[name] = drop_outliers(
+                naive_qoq_first_eval_error_series_dict_full[name],
+                sd_cols=sd_cols,
+                sd_threshold=sd_threshold
+            )
+
+        naive_qoq_first_eval_error_tables_dict_full[name] = get_qoq_error_statistics_table(
+                                                            naive_qoq_first_eval_error_series_dict_full[name])
     
-    ## Evaluate against first release
-    naive_qoq_first_eval_dfs_full[name] = create_qoq_evaluation_df(df, qoq_first_eval)
-    naive_qoq_first_eval_dfs_collapsed_full[name] = collapse_quarterly_prognosis(naive_qoq_first_eval_dfs_full[name])
-
-    ## Evaluate against latest release
-    naive_qoq_latest_eval_dfs_full[name] = create_qoq_evaluation_df(df, qoq_latest_eval)
-    naive_qoq_latest_eval_dfs_collapsed_full[name] = collapse_quarterly_prognosis(naive_qoq_latest_eval_dfs_full[name])
+    #show(next(iter(naive_qoq_first_eval_error_tables_dict_full.values())))
+        
+        
 
 
 
+    ## Evaluate against latest releases
 
-# ==================================================================================================
-# ifo QoQ FORECASTS
-# ==================================================================================================
+    # Get Result Dictionaries
+    naive_qoq_latest_eval_error_series_dict_full = {}
+    naive_qoq_latest_eval_error_tables_dict_full = {}
 
+    # Run evaluation loop over all models
+    for name, df in naive_qoq_latest_eval_dfs_collapsed_full.items():
+        naive_qoq_latest_eval_error_series_dict_full[name] = get_qoq_error_series(df)
 
-# --------------------------------------------------------------------------------------------------
-# Evaluate the ifo qoq Forecasts
-# --------------------------------------------------------------------------------------------------
+        if filter_mode:
+            naive_qoq_latest_eval_error_series_dict_full[name] = drop_outliers(
+                naive_qoq_latest_eval_error_series_dict_full[name],
+                sd_cols=sd_cols,
+                sd_threshold=sd_threshold
+            )
 
-## Evaluate against first releases
-ifo_qoq_errors_first_full = get_qoq_error_series(ifo_qoq_forecasts_eval_first_collapsed_full)
-ifo_qoq_error_table_first_full = get_qoq_error_statistics_table(ifo_qoq_errors_first_full)
-
-## Evaluate against latest releases
-ifo_qoq_errors_latest_full = get_qoq_error_series(ifo_qoq_forecasts_eval_latest_collapsed_full)
-ifo_qoq_error_table_latest_full = get_qoq_error_statistics_table(ifo_qoq_errors_latest_full)
-
-# --------------------------------------------------------------------------------------------------
-# Evaluate the naive qoq Forecasts
-# --------------------------------------------------------------------------------------------------
-
-
-## Evaluate against first releases
-
-# Get Result Dictionaries
-naive_qoq_first_eval_error_series_dict_full = {}
-naive_qoq_first_eval_error_tables_dict_full = {}
-
-# Run evaluation loop over all models
-for name, df in naive_qoq_first_eval_dfs_collapsed_full.items():
-
-    naive_qoq_first_eval_error_series_dict_full[name] = get_qoq_error_series(df)
-
-    naive_qoq_first_eval_error_tables_dict_full[name] = get_qoq_error_statistics_table(
-                                                        naive_qoq_first_eval_error_series_dict_full[name])
-
-
-
-## Evaluate against latest releases
-
-# Get Result Dictionaries
-naive_qoq_latest_eval_error_series_dict_full = {}
-naive_qoq_latest_eval_error_tables_dict_full = {}
-
-# Run evaluation loop over all models
-for name, df in naive_qoq_latest_eval_dfs_collapsed_full.items():
-    naive_qoq_latest_eval_error_series_dict_full[name] = get_qoq_error_series(df)
-
-    naive_qoq_latest_eval_error_tables_dict_full[name] = get_qoq_error_statistics_table(
-                                                        naive_qoq_latest_eval_error_series_dict_full[name])
+        naive_qoq_latest_eval_error_tables_dict_full[name] = get_qoq_error_statistics_table(
+                                                            naive_qoq_latest_eval_error_series_dict_full[name])
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+    # -------------------------------------------------------------------------------------------------#
+    # =================================================================================================#
+    #                                  Visualizing Error Measures                                      #
+    # =================================================================================================#
+    # -------------------------------------------------------------------------------------------------#
+
+    print("Visualizing error statistics (this takes a significant amount of time) ...  \n")
+
+
+
+
+
+
+    # ==================================================================================================
+    #                                 PLOT AND SAVE RESULTS OF INTEREST
+    # ==================================================================================================
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Error Time Series
+    # --------------------------------------------------------------------------------------------------
+    print("Plotting Error Time Series ...")
+
+    ## Savepaths
+
+    # ifo
+    first_eval_error_series_path_ifo = os.path.join(graph_folder, f'1_QoQ_Error_Series{filter_str}', f'0_First_Evaluation_ifo{filter_str}')
+    first_eval_error_series_path = os.path.join(graph_folder, f'1_QoQ_Error_Series{filter_str}', f'0_First_Evaluation_joint{filter_str}')
+    latest_eval_error_series_path = os.path.join(graph_folder, f'1_QoQ_Error_Series{filter_str}', f'1_Latest_Evaluation{filter_str}')
+
+    os.makedirs(first_eval_error_series_path_ifo, exist_ok=True)
+    os.makedirs(first_eval_error_series_path, exist_ok=True)
+    os.makedirs(latest_eval_error_series_path, exist_ok=True)
+
+
+    ## Clear
+    if settings.clear_result_folders:
+
+        for folder in [first_eval_error_series_path_ifo, first_eval_error_series_path, latest_eval_error_series_path]:
+            
+            folder_clear(folder)
+
+
+
+    ## Create and Save Plots
+    """
+    plot_forecast_timeseries(*args, df_eval=None, title_prefix=None, figsize=(12, 8), 
+                                show=False, save_path=None, save_name_prefix=None, select_quarters=None)
+    """
+
+    plot_forecast_timeseries(ifo_qoq_forecasts_eval_first_full, 
+                            df_eval=qoq_first_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
+                                show=False, 
+                                save_path=first_eval_error_series_path_ifo, save_name_prefix=f'ifo_First_Eval{filter_str}_', select_quarters=None)
+
+    plot_forecast_timeseries(ifo_qoq_forecasts_eval_first_full, naive_qoq_first_eval_dfs_full, 
+                            df_eval=qoq_first_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
+                                show=False, 
+                                save_path=first_eval_error_series_path, save_name_prefix=f'First_Eval{filter_str}_', select_quarters=None)
+
+
+    plot_forecast_timeseries(ifo_qoq_forecasts_eval_latest_full, naive_qoq_latest_eval_dfs_full, 
+                            df_eval=qoq_latest_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
+                                show=False, 
+                                save_path=latest_eval_error_series_path, save_name_prefix=f'Latest_Eval{filter_str}_', select_quarters=None)
+
+
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Error Scatter Plots
+    # --------------------------------------------------------------------------------------------------
+    print("Plotting Error Scatter Plots ...")
+
+    ## Savepaths
+    first_eval_error_line_path = os.path.join(graph_folder, f'1_QoQ_Error_Scatter{filter_str}', f'0_First_Evaluation{filter_str}')
+    latest_eval_error_line_path = os.path.join(graph_folder, f'1_QoQ_Error_Scatter{filter_str}', f'1_Latest_Evaluation{filter_str}')
+
+    os.makedirs(first_eval_error_line_path, exist_ok=True)
+    os.makedirs(latest_eval_error_line_path, exist_ok=True)
+
+
+    ## Clear
+    if settings.clear_result_folders:
+
+        for folder in [first_eval_error_line_path, latest_eval_error_line_path]:
+            
+            folder_clear(folder)
+
+
+    ## Create and Save Plots
+
+    # First Evaluation
+    plot_error_lines(ifo_qoq_errors_first_full, 
+                    show=False, 
+                    n_bars = QoQ_eval_n_bars,
+                    save_path=first_eval_error_line_path,
+                    save_name=f'ifo_QoQ_First_Eval{filter_str}_Error_Scatter.png')
+
+    plot_error_lines(ifo_qoq_errors_first_full, naive_qoq_first_eval_error_series_dict_full,
+                    show=False, 
+                    n_bars = QoQ_eval_n_bars,
+                    save_path=first_eval_error_line_path,
+                    save_name=f'Joint_QoQ_First_Eval{filter_str}_Error_Scatter.png')
+                    
+
+    # Latest Evaluation
+    plot_error_lines(ifo_qoq_errors_latest_full, 
+                    show=False, 
+                    n_bars = QoQ_eval_n_bars,
+                    save_path=latest_eval_error_line_path,
+                    save_name=f'ifo_QoQ_Latest_Eval{filter_str}_Error_Scatter.png')
+
+    plot_error_lines(ifo_qoq_errors_latest_full, naive_qoq_latest_eval_error_series_dict_full,
+                    show=False, 
+                    n_bars = QoQ_eval_n_bars,
+                    save_path=latest_eval_error_line_path,
+                    save_name=f'Joint_QoQ_Latest_Eval{filter_str}_Error_Scatter.png')
+
+
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Error Bar Plots
+    # --------------------------------------------------------------------------------------------------
+    print("Plotting Error Bar Plots ...")
+
+
+    ## Savepaths
+    first_eval_error_bars_path = os.path.join(graph_folder, f'1_QoQ_Error_Bars{filter_str}', f'0_First_Evaluation{filter_str}')
+    latest_eval_error_bars_path = os.path.join(graph_folder, f'1_QoQ_Error_Bars{filter_str}', f'1_Latest_Evaluation{filter_str}')
+
+    os.makedirs(first_eval_error_bars_path, exist_ok=True)
+    os.makedirs(latest_eval_error_bars_path, exist_ok=True)
+
+    
+    ## Clear
+    if settings.clear_result_folders:
+
+        for folder in [first_eval_error_bars_path, latest_eval_error_bars_path]:
+            
+            folder_clear(folder)
+
+
+    ## Create and Save Plots
+
+    # First Evaluation
+    for metric in ['ME', 'MAE', 'MSE', 'RMSE', 'SE']:
+        plot_quarterly_metrics(ifo_qoq_error_table_first_full, naive_qoq_first_eval_error_tables_dict_full, 
+                            
+                            metric_col=metric,
+                            scale_by_n=False, show=False, 
+                            n_bars = QoQ_eval_n_bars,
+
+                            save_path=first_eval_error_bars_path,
+                            save_name=f'Joint_Quarterly_{metric}_first_eval{filter_str}.png'
+                                )
+
+
+    # Latest Evaluation
+    for metric in ['ME', 'MAE', 'MSE', 'RMSE', 'SE']:
+        plot_quarterly_metrics(ifo_qoq_error_table_latest_full, naive_qoq_latest_eval_error_tables_dict_full, 
+                            
+                            metric_col=metric,
+                            scale_by_n=False, show=False, 
+                            n_bars = QoQ_eval_n_bars,
+
+                            save_path=latest_eval_error_bars_path,
+                            save_name=f'Joint_Quarterly_{metric}_latest_eval{filter_str}.png'
+                                )
 
 
 
@@ -580,144 +875,21 @@ for name, df in naive_qoq_latest_eval_dfs_collapsed_full.items():
 
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
-#                                  Visualizing Error Measures                                      #
+#               Run the evaluation pipeline on filtered and unfiltered data                        #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
-print("Visualizing error statistics ...  \n")
+
+## Unfiltered Data
+print(" \nAnalysing the full error series ... \n")
+qoq_error_evaluation_pipeline(filter_mode=False)
+
+## Filtered Errors: Drop Outliers as resulting from crisis events, e.g. 2009 and Covid Quarters
+if settings.drop_outliers:
+    print(" \nDropping Outliers from Error Series before Re-evaluation ... \n")
+    qoq_error_evaluation_pipeline(filter_mode=True, sd_cols=5, sd_threshold=settings.sd_threshold)
 
 
-
-
-
-
-# ==================================================================================================
-#                                 PLOT AND SAVE RESULTS OF INTEREST
-# ==================================================================================================
-
-
-# --------------------------------------------------------------------------------------------------
-# Error Time Series
-# --------------------------------------------------------------------------------------------------
-
-## Savepaths
-
-# ifo
-first_eval_error_series_path_ifo = os.path.join(graph_folder, '1_QoQ_Error_Series', '0_First_Evaluation_ifo')
-first_eval_error_series_path = os.path.join(graph_folder, '1_QoQ_Error_Series', '0_First_Evaluation_joint')
-latest_eval_error_series_path = os.path.join(graph_folder, '1_QoQ_Error_Series', '1_Latest_Evaluation')
-
-os.makedirs(first_eval_error_series_path_ifo, exist_ok=True)
-os.makedirs(first_eval_error_series_path, exist_ok=True)
-os.makedirs(latest_eval_error_series_path, exist_ok=True)
-
-# Naive
-
-
-## Create and Save Plots
-"""
-plot_forecast_timeseries(*args, df_eval=None, title_prefix=None, figsize=(12, 8), 
-                             show=False, save_path=None, save_name_prefix=None, select_quarters=None)
-"""
-
-plot_forecast_timeseries(ifo_qoq_forecasts_eval_first, 
-                         df_eval=qoq_first_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
-                             show=False, 
-                             save_path=first_eval_error_series_path_ifo, save_name_prefix='ifo_First_Eval_', select_quarters=None)
-
-plot_forecast_timeseries(ifo_qoq_forecasts_eval_first, naive_qoq_first_eval_dfs, 
-                         df_eval=qoq_first_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
-                             show=False, 
-                             save_path=first_eval_error_series_path, save_name_prefix='First_Eval_', select_quarters=None)
-
-
-plot_forecast_timeseries(ifo_qoq_forecasts_eval_latest, naive_qoq_latest_eval_dfs, 
-                         df_eval=qoq_latest_eval, title_prefix=None, figsize=(12, 8), linestyle=None,
-                             show=False, 
-                             save_path=latest_eval_error_series_path, save_name_prefix='Latest_Eval_', select_quarters=None)
-
-
-
-
-
-# --------------------------------------------------------------------------------------------------
-# Error Scatter Plots
-# --------------------------------------------------------------------------------------------------
-
-## Savepaths
-first_eval_error_line_path = os.path.join(graph_folder, '1_QoQ_Error_Scatter', '0_First_Evaluation')
-latest_eval_error_line_path = os.path.join(graph_folder, '1_QoQ_Error_Scatter', '1_Latest_Evaluation')
-
-os.makedirs(first_eval_error_line_path, exist_ok=True)
-os.makedirs(latest_eval_error_line_path, exist_ok=True)
-
-
-## Create and Save Plots
-
-# First Evaluation
-plot_error_lines(ifo_qoq_errors_first, 
-                  show=False, 
-                  save_path=first_eval_error_line_path,
-                  save_name=f'ifo_QoQ_First_Eval_Error_Scatter.png')
-
-plot_error_lines(ifo_qoq_errors_first, naive_qoq_first_eval_error_series_dict,
-                  show=False, 
-                  save_path=first_eval_error_line_path,
-                  save_name=f'Joint_QoQ_First_Eval_Error_Scatter.png')
-                 
-
-# Latest Evaluation
-plot_error_lines(ifo_qoq_errors_latest, 
-                  show=False, 
-                  save_path=latest_eval_error_line_path,
-                  save_name=f'ifo_QoQ_Latest_Eval_Error_Scatter.png')
-
-plot_error_lines(ifo_qoq_errors_latest, naive_qoq_latest_eval_error_series_dict,
-                  show=False, 
-                  save_path=latest_eval_error_line_path,
-                  save_name=f'Joint_QoQ_Latest_Eval_Error_Scatter.png')
-
-
-
-
-
-# --------------------------------------------------------------------------------------------------
-# Error Bar Plots
-# --------------------------------------------------------------------------------------------------
-
-
-## Savepaths
-first_eval_error_bars_path = os.path.join(graph_folder, '1_QoQ_Error_Bars', '0_First_Evaluation')
-latest_eval_error_bars_path = os.path.join(graph_folder, '1_QoQ_Error_Bars', '1_Latest_Evaluation')
-
-os.makedirs(first_eval_error_bars_path, exist_ok=True)
-os.makedirs(latest_eval_error_bars_path, exist_ok=True)
-
-
-## Create and Save Plots
-
-# First Evaluation
-for metric in ['ME', 'MAE', 'MSE', 'RMSE', 'SE']:
-    plot_quarterly_metrics(ifo_qoq_error_table_first, naive_qoq_first_eval_error_tables_dict, 
-                           
-                        metric_col=metric,
-                        scale_by_n=False, show=False, 
-
-                        save_path=first_eval_error_bars_path,
-                        save_name=f'Joint_Quarterly_{metric}_first_eval.png'
-                            )
-
-
-# Latest Evaluation
-for metric in ['ME', 'MAE', 'MSE', 'RMSE', 'SE']:
-    plot_quarterly_metrics(ifo_qoq_error_table_latest, naive_qoq_latest_eval_error_tables_dict, 
-                           
-                        metric_col=metric,
-                        scale_by_n=False, show=False, 
-
-                        save_path=latest_eval_error_bars_path,
-                        save_name=f'Joint_Quarterly_{metric}_latest_eval.png'
-                            )
 
 
 

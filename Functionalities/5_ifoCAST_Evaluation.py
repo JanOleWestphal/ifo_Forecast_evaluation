@@ -189,6 +189,20 @@ ifo_forecast_dates = pd.read_excel(file_path_ifo_dates, index_col=0)
 ifo_forecast_dates = ifo_forecast_dates[['Veroeffentlichungsdatum']].rename(
     columns={'Veroeffentlichungsdatum': 'forecast_date'})
 
+## Make sure to truncate the release dates such that they don't exceed available ifo-forecast to avoid bugs
+
+# Get last col name and parse as datetime
+last_col = ifo_qoq_forecasts.columns[-1]
+last_col_date = pd.to_datetime(last_col)
+#show(ifo_forecast_dates)
+#print(last_col_date)
+
+# Add 30 days buffer: release date and Datenstand do not always coincide
+threshold_date = last_col_date + pd.Timedelta(days=30)
+
+# Apply truncation
+ifo_forecast_dates.loc[ifo_forecast_dates['forecast_date'] > threshold_date, 'forecast_date'] = pd.NaT
+
 #show(ifo_forecast_dates)
 
 
@@ -321,6 +335,7 @@ def read_csvs_from_folder(folder_path: str, file_pattern: str = "*.csv") -> pd.D
     
     # Combine all DataFrames
     final_df = pd.concat(combined_data, ignore_index=True)
+    #show(final_df)
     
     return final_df
 
@@ -356,7 +371,7 @@ ifocast_last_values.rename(columns={'BIP-Prognose': 'Q0'}, inplace=True)
 periods = pd.PeriodIndex(ifocast_last_values['forecast_target'].str.replace('_', ''), freq='Q')
 ifocast_last_values['forecast_target'] = periods.to_timestamp(how='start')
 
-# Step 4: Set datetime index
+# Set datetime index
 ifocast_last_values.set_index('forecast_target', inplace=True)
 
 
@@ -547,6 +562,8 @@ ifoCAst_Qm1_Q0_Q1_full = horizon_merger(ifocast_Qminus1, ifocast_Q0, ifocast_Q1)
 # Filter ifoCAST dates towards the ifo Forecast Release dates
 # --------------------------------------------------------------------------------------------------
 
+"""THINK THROUGH WHETHER THIS DOES WHAT IT IS SUPPOSED TO DO"""
+
 # Define a filter function
 def filter_by_forecast_dates(df_1, date_df=ifo_forecast_dates) -> pd.DataFrame:
     """
@@ -597,8 +614,8 @@ def filter_by_forecast_dates(df_1, date_df=ifo_forecast_dates) -> pd.DataFrame:
 ## Aply to ifocast df
 ifoCAst_Qm1_Q0_Q1_filtered = filter_by_forecast_dates(ifoCAst_Qm1_Q0_Q1_full)
 
-# show(ifoCAst_Qm1_Q0_Q1_full)
-# show(ifoCAst_Qm1_Q0_Q1_filtered)
+#show(ifoCAst_Qm1_Q0_Q1_full)
+#show(ifoCAst_Qm1_Q0_Q1_filtered)
 
 
 
@@ -628,7 +645,6 @@ ifoCAst_Qm1_Q0_Q1_filtered = filter_by_forecast_dates(ifoCAst_Qm1_Q0_Q1_full)
 - Get the Error Series and tables: full and filtered
 - Plot the error series and the other statistics
 """
-
 
 
 
@@ -854,6 +870,7 @@ ifo_qoq_forecasts = ifo_qoq_forecasts.loc[:,
     ifo_qoq_forecasts.columns.to_series().dt.to_period('Q').isin(
                                 ifoCAst_Qm1_Q0_Q1_filtered.T.columns.to_series().dt.to_period('Q'))]
 
+#show(ifo_qoq_forecasts)
 
 ## Define names
 ifo_qoq_matched_eval_df_names = ['ifo_qoq_matched_first',
@@ -892,12 +909,21 @@ for name, eval_df in zip(ifo_qoq_matched_eval_df_names, eval_dfs):
 # Naive QoQ Forecasts → Error Series and Tables
 # --------------------------------------------------------------------------------------------------
 
-# Paths (reuse or redefine as needed)
+# Paths
 naive_qoq_matched_error_path = os.path.join(wd, '0_1_Output_Data', '5_naive_qoq_error_series_matched_to_ifoCAST')
 os.makedirs(naive_qoq_matched_error_path, exist_ok=True)
 
 naive_qoq_matched_table_path = os.path.join(table_folder, '4_naive_QoQ_matched_to_ifoCAST')
 os.makedirs(naive_qoq_matched_table_path, exist_ok=True)
+
+
+## Clear
+if settings.clear_result_folders:
+
+    for folder in [naive_qoq_matched_error_path, naive_qoq_matched_table_path]:
+        
+        folder_clear(folder)
+
 
 # Dicts to store outputs
 naive_qoq_matched_error_series_dict = {}
@@ -946,6 +972,13 @@ os.makedirs(ifo_qoq_matched_error_path, exist_ok=True)
 # Error Tables
 ifo_qoq_matched_table_path = os.path.join(table_folder, '4_ifo_QoQ_matched_to_ifoCAST')
 os.makedirs(ifo_qoq_matched_table_path, exist_ok=True)
+
+## Clear
+if settings.clear_result_folders:
+
+    for folder in [ifo_qoq_matched_error_path, ifo_qoq_matched_table_path]:
+        
+        folder_clear(folder)
 
 
 ## Evaluation and Table Creation
@@ -1006,6 +1039,13 @@ os.makedirs(ifoCast_filtered_error_path, exist_ok=True)
 ifoCAST_filtered_table_path = os.path.join(table_folder, '4_ifoCAST_evaluations_matched')
 os.makedirs(ifoCAST_filtered_table_path, exist_ok=True)
 
+## Clear
+if settings.clear_result_folders:
+
+    for folder in [ifoCast_filtered_error_path, ifoCast_filtered_error_path]:
+        
+        folder_clear(folder)
+
 
 ## Evaluation and Table Creation
 ifoCast_filtered_error_series_names = ['ifoCAst_errors_filtered_first',
@@ -1063,6 +1103,14 @@ ifoCAST_full_table_path = os.path.join(table_folder, '4_ifoCAST_evaluations_full
 os.makedirs(ifoCAST_full_table_path, exist_ok=True)
 
 
+## Clear
+if settings.clear_result_folders:
+
+    for folder in [ifoCast_full_error_path, ifoCast_full_error_path]:
+        
+        folder_clear(folder)
+
+
 ## Evaluation and Table Creation
 ifoCast_full_error_series_names = ['ifoCAst_errors_full_first',
                           'ifoCAst_errors_full_latest',
@@ -1115,6 +1163,13 @@ os.makedirs(ifoCast_last_rep_error_path, exist_ok=True)
 # Error Tables
 ifoCAST_last_rep_table_path = os.path.join(table_folder, '4_ifoCAST_evaluations_last_rep')
 os.makedirs(ifoCAST_last_rep_table_path, exist_ok=True)
+
+## Clear
+if settings.clear_result_folders:
+
+    for folder in [ifoCast_last_rep_error_path , ifoCAST_last_rep_table_path]:
+        
+        folder_clear(folder)
 
 
 ## Evaluation and Table Creation
@@ -1226,6 +1281,11 @@ for graph_type, parent_path in ifoCAST_graph_folders.items():
     for sub in subfolder_names:
         full_path = os.path.join(parent_path, sub)
         os.makedirs(full_path, exist_ok=True)
+
+        ## Clear 
+        if settings.clear_result_folders:
+            folder_clear(full_path)
+            
         ifoCAST_paths[graph_type][sub] = full_path
 
 

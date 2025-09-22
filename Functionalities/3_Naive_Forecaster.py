@@ -7,12 +7,12 @@
 # Author:       Jan Ole Westphal
 # Date:         2025-07
 #
-# Description:  A program for creating simple GDP-growth forecasting, pulling the latest Bundesbank 
-#               quaterly GDP releases. For every quaterly released data-series, a new forecast model
-#               is estimated. Available models are described in the Parameter setup section. 
+# Description:  A program for creating simple GDP-growth forecasting time series using the latest 
+#               Bundesbank quaterly GDP releases. For every quaterly released data-series, a new 
+#               forecast model is estimated.
+#               Available models are described in the Parameter setup section. 
 #               Puts out forecasts and time series into excel, designed for evaluating historic ifo 
-#               forecasts against more naive methods, which is done in a different piece of code or
-#               added in future versions.            
+#               forecasts against more naive methods, which is done in a different piece of code.            
 # ==================================================================================================
 # --------------------------------------------------------------------------------------------------
 
@@ -113,7 +113,7 @@ if naming_convention not in ['published', 'data']:
     raise ValueError(f"Invalid naming_convention: '{naming_convention}'. Must be 'published' or 'data'")
 
 # Validate model type
-valid_models = {'AR', 'AVERAGE', 'SMA'}
+valid_models = {'AR', 'AVERAGE', 'GLIDING_AVERAGE'}
 for model in models:
     if model not in valid_models:
         raise ValueError(f"Invalid model '{model}'. Must be one of: {valid_models}")
@@ -163,10 +163,14 @@ for model in models:
 ## Define the result_subfolder path under wd\1_Result_Tables\1_Naive_Forecaster
 base_result_folder = os.path.join(wd, '1_Result_Tables', '1_Naive_Forecaster_Outputs')
 
+## Clear
+if settings.clear_result_folders:
+    folder_clear(base_result_folder)
+
 if resultfolder_name_n_forecast == 'Default':
 
     for model in models:
-        if model in ['AVERAGE', 'SMA']:
+        if model in ['AVERAGE', 'GLIDING_AVERAGE']:
             result_subfolder = os.path.join(
                 base_result_folder,
                 f"Results_{model}_{average_horizon}_{forecast_horizon-1}"
@@ -545,7 +549,7 @@ def retrieve_qoq_predictions(qoq_forecast_df):
     for path in [file_path_forecasts_qoq, file_path_forecasts_qoq_2]:
 
         # Model-based dynamic naming
-        if model in ['AVERAGE', 'SMA']:
+        if model in ['AVERAGE', 'GLIDING_AVERAGE']:
             qoq_forecast_name = f'naive_qoq_forecasts_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
 
         elif model == 'AR':
@@ -634,7 +638,7 @@ def save_dt_indexed_results(df_combined_qoq, df_combined_yoy):
 
 
     # If clause for dynamic naming of results
-    if model in ['AVERAGE', 'SMA']:
+    if model in ['AVERAGE', 'GLIDING_AVERAGE']:
 
         # Full Data qoq
         filename_df_combined_qoq = f'dt_full_qoq{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
@@ -717,7 +721,7 @@ def get_yoy_forecast_series(df_combined_yoy, summer = False, winter = False):
     elif winter:
         seasonal_suffix = "_winter"
 
-    if model in ['AVERAGE', 'SMA']:
+    if model in ['AVERAGE', 'GLIDING_AVERAGE']:
         filename_yoy_forecast_series = f'forecast_series_yoy_{model}_{average_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx'
     elif model == 'AR':
         filename_yoy_forecast_series = f'forecast_series_yoy_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx'
@@ -811,7 +815,7 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
     # df_combined_qoq, df_combined_yoy,  qoq_forecast_index_df
 
     # If clause for better naming of results
-    if model in ['AVERAGE', 'SMA']:
+    if model in ['AVERAGE', 'GLIDING_AVERAGE']:
 
         # Full Data qoq
         filename_df_combined_qoq = f'Real_and_Predicted_QoQ_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
@@ -977,11 +981,11 @@ for model in models:
     # Simple moving average of previous growth rates within the average_horizon
     # =============================================================================================#
 
-    elif model == 'SMA':
+    elif model == 'GLIDING_AVERAGE':
 
         for average_horizon in average_horizons:
 
-            print(f""" Calculating forecasts as a simple moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ... \n""")
+            print(f""" Calculating forecasts as a moving average of the past {average_horizon} quarters, predicting present and forecasting {forecast_horizon - 1} quarters into the future ... \n""")
       
             ## Prepare the forecasting
             qoq_forecast_df, qoq_forecast_index_df = prep_forecast_objects(df_qoq, forecast_horizon)
@@ -999,14 +1003,14 @@ for model in models:
                 
                 # Create #forecast_horizon prediction elements elements
                 for _ in range(forecast_horizon):
-                    # Compute the average of the current data window: sma
-                    sma = data.mean()
+                    # Compute the average of the current data window: GLIDING_AVERAGE
+                    GLIDING_AVERAGE = data.mean()
 
                     # Build forecast list, save results
-                    forecast_qoq.append(sma)
+                    forecast_qoq.append(GLIDING_AVERAGE)
 
                     # Shift data window for the next step
-                    data = np.append(data, sma)
+                    data = np.append(data, GLIDING_AVERAGE)
                     data = data[1:]
 
                 

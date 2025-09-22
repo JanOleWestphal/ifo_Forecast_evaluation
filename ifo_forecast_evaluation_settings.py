@@ -38,7 +38,7 @@ run_ifoCAST_evaluation = True  # True or False
 
 ## Decide whether to overwrite previous output (always overwriten if same functionality is executed)
 clear_result_folders = True   # True or False
-"""Not fully implemented yet, delete results by hand if you want to be sure"""
+
 
 # ==================================================================================================
 #                                         DATA SETTINGS
@@ -46,48 +46,6 @@ clear_result_folders = True   # True or False
 
 # Decide wether to use Real time (True) or a local version of the Bundesbank data (False)
 api_pull = True # True or False; only set False if no internet connection
-
-
-
-
-
-# ==================================================================================================
-#                                     EVALUATION SETTINGS
-# ==================================================================================================
-
-
-# --------------------------------------------------------------------------------------------------
-#                                     OUTLIER SETTINGS
-# --------------------------------------------------------------------------------------------------
-
-# Drop Outliers: Decide to drop forecast erros exceeding a certain threshhold
-# Designed to analyse the Forecsat Series wihtput big crisis (2009 and two Covid Quarters)
-drop_error_outliers = True # True or False
-
-
-
-## Select an evaluation intervall, e.g. 2010-Q1 - 2019-Q4:
-
-"""
-NOTE: 
-- Coosing a quarter other than 1 omits the entire year for YoY calculations
-- This is not called in the ifoCAST evaluation, but could be changed if needed
-"""
-
-# Define the horizon of first releases which should be evaluated from below:
-first_release_lower_limit_year = 1970            # from 1989 onwards; set as integer
-first_release_lower_limit_quarter = 1            # 1,2,3 or 4; set as integer
-
-# Define the horizon of first releases which should be evaluated from below:
-first_release_upper_limit_year = 2100           # from 1989 onwards; set as integer
-first_release_upper_limit_quarter = 4            # 1,2,3 or 4; set as integer
-
-
-
-
-# --------------------------------------------------------------------------------------------------
-#                                        DATA SETTINGS
-# --------------------------------------------------------------------------------------------------
 
 # Decide wether to extend the available real-time data by using the earliest available data release 
 # Q2-1995 and imputing it backwards to Q1-1989 (True)
@@ -98,8 +56,52 @@ evaluation_limit_year = 1970            # from 1970 onwards; set as integer
 evaluation_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
 
-# Define whether to match the dates of available ifo QoQ Forecasts for the naive forecaster
+
+
+
+
+
+
+# ==================================================================================================
+#                                     EVALUATION SETTINGS
+# ==================================================================================================
+
+## Decide how many quarters to plot in the Quarterly Evaluation Module; int, should be more than 
+QoQ_eval_n_bars = 7  # int in [1,10]; Remember 0-indexing: n_bars = 5 plots Q0-Q4
+
+## Define whether to match the dates of available ifo QoQ Forecasts for the naive forecaster
 match_ifo_naive_dates = True  # True or False
+
+
+
+# --------------------------------------------------------------------------------------------------
+#                                     OUTLIER SETTINGS
+# --------------------------------------------------------------------------------------------------
+
+# Drop Outliers: Decide to drop forecast errors exceeding a certain threshhold
+drop_outliers = False  # True or False
+
+# Set the Thresshold which drops errors exceeding sd_threshold * sd(col)
+sd_threshold = 2  # float, e.g. 0.05 for 5
+
+
+## Select an evaluation intervall, e.g. 2010-Q1 - 2019-Q4:
+"""
+NOTE: 
+- Coosing a quarter other than 1 omits the entire year for YoY calculations
+- This is not called in the ifoCAST evaluation, but could be changed if needed
+"""
+
+# Define the horizon of first releases which should be evaluated from below:
+first_release_lower_limit_year = 1970           # from 1989 onwards; set as integer
+first_release_lower_limit_quarter = 1            # 1,2,3 or 4; set as integer
+
+# Define the horizon of first releases which should be evaluated from below:
+first_release_upper_limit_year = 2100           # from 1989 onwards; set as integer
+first_release_upper_limit_quarter = 1            # 1,2,3 or 4; set as integer
+
+
+
 
 
 
@@ -116,14 +118,14 @@ match_ifo_naive_dates = True  # True or False
 #                                       Define the model
 # --------------------------------------------------------------------------------------------------
 
-# Set the agent's forecasting method; options: 'AR', 'AVERAGE', 'SMA'
-models = ['AR', 'AVERAGE', 'SMA']
+# Set the agent's forecasting method; options: 'AR', 'GLIDING_AVERAGE', 'AVERAGE' - where 'AVERAGE' is an SMA
+models = ['AR', 'AVERAGE']
 
 # For AR model: set number of lags (sugested: 2); list of int
 AR_orders = [2]
 
 # For AR model: set the memory of the agent (timeframe the model is estimated on); list of int or 'FULL'
-AR_horizons = [50, 100]
+AR_horizons = [50]
 """
 Note:
 -> unstable estimates for 2020_Q3 (release date, last observation 2020_Q2) for below 48
@@ -132,11 +134,11 @@ Note:
 """
 
 # For average-based models: set time frame over which the agent averages in quarters; list of int or 'FULL'
-average_horizons = [1,2,10,20]
+average_horizons = [1,10]
 
 
 # Set how far the agent predicts into the future; int, NO LIST ITERATION
-forecast_horizon = 9
+forecast_horizon = 6
 
 # Note on forecast_horizon:
 """
