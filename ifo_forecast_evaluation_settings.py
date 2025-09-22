@@ -40,7 +40,7 @@ run_ifoCAST_evaluation = True  # True or False
 clear_result_folders = True   # True or False
 
 ## Decide whether to clear the result folders on a larger level: (clears folrders 0_1, 1 and 2)
-macro_clear = False  # True or False
+macro_clear = True  # True or False
 
 
 # ==================================================================================================

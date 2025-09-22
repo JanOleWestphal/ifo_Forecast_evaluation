@@ -287,7 +287,7 @@ def match_ifo_naive_forecasts_dates(ifo_qoq_forecasts, naive_qoq_dfs_dict):
             # Save back
             naive_qoq_dfs_dict[key] = filtered_df
 
-            return naive_qoq_dfs_dict
+        return naive_qoq_dfs_dict
 
 ## Execute the filter function: drop all naive qoq which do not have a corresponding ifo qoq forecast
 naive_qoq_dfs_dict = match_ifo_naive_forecasts_dates(ifo_qoq_forecasts, naive_qoq_dfs_dict)

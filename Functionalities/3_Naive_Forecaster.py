@@ -162,6 +162,7 @@ for model in models:
 
 ## Define the result_subfolder path under wd\1_Result_Tables\1_Naive_Forecaster
 base_result_folder = os.path.join(wd, '1_Result_Tables', '1_Naive_Forecaster_Outputs')
+os.makedirs(base_result_folder, exist_ok=True)
 
 ## Clear
 if settings.clear_result_folders:
