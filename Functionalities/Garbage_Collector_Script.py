@@ -1,5 +1,81 @@
 
 
+# --------------------------------------------------------------------------------------------------
+# Evaluate the naive qoq Forecasts
+# --------------------------------------------------------------------------------------------------
+
+
+## Evaluate against first releases
+
+# Get Result Dictionaries
+naive_qoq_first_eval_error_series_dict = {}
+naive_qoq_first_eval_error_tables_dict = {}
+
+# Run evaluation loop over all models
+for name, df in naive_qoq_first_eval_dfs_collapsed.items():
+    naive_qoq_first_eval_error_series_dict[name] = get_qoq_error_series(
+                                        df, 
+                                        naive_qoq_error_path, 
+                                        file_name=f"{name}_qoq_errors_first_eval.xlsx")
+
+    naive_qoq_first_eval_error_tables_dict[name] = get_qoq_error_statistics_table(
+                                                        naive_qoq_first_eval_error_series_dict[name],
+                                                        'first_eval',naive_qoq_table_path, 
+                                                        f'{name}_qoq_forecast_error_table_first_eval.xlsx')
+
+#show(next(iter(naive_qoq_first_eval_error_tables_dict.values())))
+
+
+
+## Evaluate against latest releases
+
+# Get Result Dictionaries
+naive_qoq_latest_eval_error_series_dict = {}
+naive_qoq_latest_eval_error_tables_dict = {}
+
+# Run evaluation loop over all models
+for name, df in naive_qoq_latest_eval_dfs_collapsed.items():
+    naive_qoq_latest_eval_error_series_dict[name] = get_qoq_error_series(
+                                        df, 
+                                        naive_qoq_error_path, 
+                                        file_name=f"{name}_qoq_errors_latest_eval.xlsx")
+
+    naive_qoq_latest_eval_error_tables_dict[name] = get_qoq_error_statistics_table(
+                                                        naive_qoq_latest_eval_error_series_dict[name],
+                                                        'latest_eval', naive_qoq_table_path, 
+                                                        f'{name}_qoq_forecast_error_table_latest_eval.xlsx')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                                        ~  OPTIONS  ~                                             #

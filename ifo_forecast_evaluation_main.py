@@ -61,9 +61,9 @@ output_data_path = os.path.join(workfolder, '0_1_Output_Data')
 table_path = os.path.join(workfolder, '1_Result_Tables')
 graph_path = os.path.join(workfolder, '2_Result_Graphs')
 
-if settings.clear_result_folders:
+if settings.macro_clear:
 
-    print('\nClearing Result Folders, set clear_result_folders if this is unintended! \n')
+    print('\nClearing Result Folders at high-level, macro_clear = False if this is unintended! \n')
 
     for folder in [output_data_path, table_path, graph_path]:
         folder_clear(folder)

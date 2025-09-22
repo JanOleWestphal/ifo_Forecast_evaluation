@@ -39,6 +39,9 @@ run_ifoCAST_evaluation = True  # True or False
 ## Decide whether to overwrite previous output (always overwriten if same functionality is executed)
 clear_result_folders = True   # True or False
 
+## Decide whether to clear the result folders on a larger level: (clears folrders 0_1, 1 and 2)
+macro_clear = False  # True or False
+
 
 # ==================================================================================================
 #                                         DATA SETTINGS
@@ -90,15 +93,19 @@ sd_threshold = 2  # float, e.g. 0.05 for 5
 NOTE: 
 - Coosing a quarter other than 1 omits the entire year for YoY calculations
 - This is not called in the ifoCAST evaluation, but could be changed if needed
+- Full evlauation is always run as well
 """
 
 # Define the horizon of first releases which should be evaluated from below:
-first_release_lower_limit_year = 1970           # from 1989 onwards; set as integer
+first_release_lower_limit_year = 2010           # from 1989 onwards; set as integer
 first_release_lower_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
 # Define the horizon of first releases which should be evaluated from below:
-first_release_upper_limit_year = 2100           # from 1989 onwards; set as integer
+first_release_upper_limit_year = 2018          # from 1989 onwards; set as integer
 first_release_upper_limit_quarter = 1            # 1,2,3 or 4; set as integer
+
+# Decide whether to filter for outliers within the evaluation intervall
+filter_outliers_within_eval_intervall = False  # True or False
 
 
 
