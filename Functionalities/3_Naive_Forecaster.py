@@ -276,10 +276,11 @@ df_qoq = pd.read_excel(df_qoq_path, index_col=0)
 # ==================================================================================================
 
 # Apply row and col selection from helperfunctions:
+"""
 for df in [df, df_qoq]:
     df = filter_first_release_limit(df)
     df = filter_evaluation_limit(df)
-
+"""
 
 
 
