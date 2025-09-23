@@ -49,7 +49,7 @@ import matplotlib.colors as mcolors
 import matplotlib.cm as cm
 
 
-
+import ifo_forecast_evaluation_settings as settings
 
 
 
@@ -62,6 +62,63 @@ import matplotlib.cm as cm
 #                                   DATA PROCESSING FUNCTIONS                                      #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
+
+
+# ==================================================================================================
+#                   SELECT ONLY FORECASTS AVAILABLE IN THE PRIMARY OBJECT OF INTEREST
+# ==================================================================================================
+
+def match_ifo_naive_forecasts_dates(ifo_qoq_forecasts, naive_qoq_dfs_dict):
+
+    """
+    This function matches the dates of the naive forecaster dataframes to the dates of the ifo forecasts.
+    It removes any rows and columns from the naive forecaster dataframes that do not have a corresponding
+    entry in the ifo forecasts dataframe.
+
+    Parameters:
+    ifo_qoq_forecasts (pd.DataFrame): DataFrame containing ifo quarterly forecasts with datetime index and columns.
+    naive_qoq_dfs_dict (dict): Dictionary of DataFrames containing naive quarterly forecasts.
+
+    Returns:
+    dict: Updated dictionary of DataFrames with matched dates.
+    """
+
+    if settings.match_ifo_naive_dates:
+
+        for key, naive_df in naive_qoq_dfs_dict.items():
+            
+            # Convert to datetime
+            ifo_cols_dt = pd.to_datetime(ifo_qoq_forecasts.columns)
+            ifo_rows_dt = pd.to_datetime(ifo_qoq_forecasts.index)
+
+            # Build sets of year-quarter pairs for IFO
+            ifo_col_quarters = {(d.year, d.quarter) for d in ifo_cols_dt}
+            ifo_row_quarters = {(d.year, d.quarter) for d in ifo_rows_dt}
+
+            # Keep only valid naive columns (year-quarter match)
+            valid_cols = [
+                col for col in naive_df.columns
+                if (pd.to_datetime(col).year, pd.to_datetime(col).quarter) in ifo_col_quarters
+            ]
+
+            # Start filtered df
+            filtered_df = pd.DataFrame(index=naive_df.index)
+
+            for col in valid_cols:
+
+                # For this col, filter rows by year-quarter match with IFO rows
+                valid_rows = [
+                    row for row in naive_df.index
+                    if (pd.to_datetime(row).year, pd.to_datetime(row).quarter) in ifo_row_quarters
+                ]
+
+                # Assign truncated series
+                filtered_df[col] = naive_df.loc[valid_rows, col]
+
+            # Save back
+            naive_qoq_dfs_dict[key] = filtered_df
+
+        return naive_qoq_dfs_dict
 
 
 
@@ -1046,6 +1103,7 @@ def plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8
     if save_path and save_name:
         import os
         full_path = os.path.join(save_path, save_name)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
         plt.savefig(full_path, dpi=300, bbox_inches='tight')
     
     # Show plot if specified

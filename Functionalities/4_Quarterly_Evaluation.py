@@ -238,57 +238,6 @@ qoq_rev = pd.read_excel(qoq_path_rev, index_col=0)
 # Select whether to omit Naive Forecaster Observations if no ifo Forecast is available
 # ==================================================================================================
 
-def match_ifo_naive_forecasts_dates(ifo_qoq_forecasts, naive_qoq_dfs_dict):
-
-    """
-    This function matches the dates of the naive forecaster dataframes to the dates of the ifo forecasts.
-    It removes any rows and columns from the naive forecaster dataframes that do not have a corresponding
-    entry in the ifo forecasts dataframe.
-
-    Parameters:
-    ifo_qoq_forecasts (pd.DataFrame): DataFrame containing ifo quarterly forecasts with datetime index and columns.
-    naive_qoq_dfs_dict (dict): Dictionary of DataFrames containing naive quarterly forecasts.
-
-    Returns:
-    dict: Updated dictionary of DataFrames with matched dates.
-    """
-    if settings.match_ifo_naive_dates:
-
-        for key, naive_df in naive_qoq_dfs_dict.items():
-            
-            # Convert to datetime
-            ifo_cols_dt = pd.to_datetime(ifo_qoq_forecasts.columns)
-            ifo_rows_dt = pd.to_datetime(ifo_qoq_forecasts.index)
-
-            # Build sets of year-quarter pairs for IFO
-            ifo_col_quarters = {(d.year, d.quarter) for d in ifo_cols_dt}
-            ifo_row_quarters = {(d.year, d.quarter) for d in ifo_rows_dt}
-
-            # Keep only valid naive columns (year-quarter match)
-            valid_cols = [
-                col for col in naive_df.columns
-                if (pd.to_datetime(col).year, pd.to_datetime(col).quarter) in ifo_col_quarters
-            ]
-
-            # Start filtered df
-            filtered_df = pd.DataFrame(index=naive_df.index)
-
-            for col in valid_cols:
-
-                # For this col, filter rows by year-quarter match with IFO rows
-                valid_rows = [
-                    row for row in naive_df.index
-                    if (pd.to_datetime(row).year, pd.to_datetime(row).quarter) in ifo_row_quarters
-                ]
-
-                # Assign truncated series
-                filtered_df[col] = naive_df.loc[valid_rows, col]
-
-            # Save back
-            naive_qoq_dfs_dict[key] = filtered_df
-
-        return naive_qoq_dfs_dict
-
 ## Execute the filter function: drop all naive qoq which do not have a corresponding ifo qoq forecast
 naive_qoq_dfs_dict = match_ifo_naive_forecasts_dates(ifo_qoq_forecasts, naive_qoq_dfs_dict)
 
@@ -405,7 +354,9 @@ def qoq_error_evaluation_pipeline(ifo_qoq_df, naive_qoq_dict,
 
     ## Get Error Series
     ifo_qoq_forecasts_eval_first = create_qoq_evaluation_df(ifo_qoq_df, qoq_first_eval)
+    #show(ifo_qoq_forecasts_eval_first)
     ifo_qoq_forecasts_eval_first_collapsed = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_first)
+    #show(ifo_qoq_forecasts_eval_first_collapsed)
 
     ifo_qoq_errors_first = get_qoq_error_series(ifo_qoq_forecasts_eval_first_collapsed,
                                         ifo_qoq_error_path, 
