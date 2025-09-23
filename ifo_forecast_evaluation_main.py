@@ -178,6 +178,13 @@ else:
     print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
 
 
+# ==================================================================================================
+# ifoCAST long-term EVALUATION and OUTPUT
+# ==================================================================================================
+if settings.run_ifoCAST_long_term_evaluation:
+    execute_script('6_ifoCAST_long_term_Evaluation.py')
+else: 
+    print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
 
 print('\nifo Forecast Evaluation completed successfully! \n')
 

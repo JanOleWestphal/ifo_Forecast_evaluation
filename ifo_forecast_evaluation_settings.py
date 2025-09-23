@@ -36,7 +36,7 @@ run_quarterly_evaluation = True  # True or False
 run_ifoCAST_evaluation = True  # True or False
 
 # 6.: Decide whether to run the ifoCAST long-term evaluation module
-run_ifoCAST_evaluation = True  # True or False
+run_ifoCAST_long_term_evaluation = True  # True or False
 
 
 ## Decide whether to overwrite previous output (always overwriten if same functionality is executed)

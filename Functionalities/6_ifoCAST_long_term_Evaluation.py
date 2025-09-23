@@ -31,6 +31,7 @@ import importlib
 import subprocess
 import sys
 import os
+import shutil
 import glob
 import re
 from datetime import datetime, date
@@ -165,27 +166,27 @@ ifoCast_longterm_filepath = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '2
                                   'ifoCast_longterm_Q42019.xlsx' )
 
 # Load Excel
-ifoCast_longterm = pd.read_excel(ifoCast_longterm_filepath)
+ifoCAST_longterm = pd.read_excel(ifoCast_longterm_filepath)
 
 
 
 # Ensure Date is datetime and set as index
-ifoCast_longterm['Date'] = pd.to_datetime(ifoCast_longterm['Date'])
-ifoCast_longterm = ifoCast_longterm.set_index('Date')
+ifoCAST_longterm['Date'] = pd.to_datetime(ifoCAST_longterm['Date'])
+ifoCAST_longterm = ifoCAST_longterm.set_index('Date')
 
 # Use qoq_growth as column labels and values as diagonal entries
 # -> make a diagonal DataFrame
-values = ifoCast_longterm['qoq_growth'].values
-dates = ifoCast_longterm.index
+values = ifoCAST_longterm['qoq_growth'].values
+dates = ifoCAST_longterm.index
 
-ifoCast_longterm = pd.DataFrame(
+ifoCAST_longterm = pd.DataFrame(
     np.diag(values),
     index=dates,
     columns=dates
 )
 
 # Set all non diagonal entries to NaN
-ifoCast_longterm = ifoCast_longterm.replace(0, np.nan)
+ifoCAST_longterm = ifoCAST_longterm.replace(0, np.nan)
 
 #show(ifoCast_longterm)  
 
@@ -260,20 +261,66 @@ qoq_rev = pd.read_excel(qoq_path_rev, index_col=0)
 # FILTER DATA TO ifoCAST Scope
 # ==================================================================================================
 
+def match_ifoCAST_naive_forecasts_dates(ifo_qoq_forecasts, naive_qoq_dfs_dict):
+
+    if settings.match_ifo_naive_dates:
+
+        for key, naive_df in naive_qoq_dfs_dict.items():
+            
+            # Convert to datetime
+            ifo_cols_dt = pd.to_datetime(ifo_qoq_forecasts.columns)
+            ifo_rows_dt = pd.to_datetime(ifo_qoq_forecasts.index)
+
+            # Build sets of year-quarter pairs for IFO
+            ifo_col_quarters = {(d.year, d.quarter) for d in ifo_cols_dt}
+            ifo_row_quarters = {(d.year, d.quarter) for d in ifo_rows_dt}
+
+            # Keep only valid naive columns (year-quarter match)
+            valid_cols = [
+                col for col in naive_df.columns
+                if (pd.to_datetime(col).year, pd.to_datetime(col).quarter) in ifo_col_quarters
+            ]
+
+            # Start filtered df
+            filtered_df = pd.DataFrame(index=naive_df.index)
+
+            for col in valid_cols:
+
+                # For this col, filter rows by year-quarter match with IFO rows
+                valid_rows = [
+                    row for row in naive_df.index
+                    if (pd.to_datetime(row).year, pd.to_datetime(row).quarter) in ifo_row_quarters
+                ]
+
+                # Assign truncated series
+                filtered_df[col] = naive_df.loc[valid_rows, col]
+
+            # Save back
+            naive_qoq_dfs_dict[key] = filtered_df
+
+        return naive_qoq_dfs_dict
+
+
+
 ## Match ifoCAST to normal forecast availability
-ifoCAST_longterm_dict = {"ifoCAST": ifoCast_longterm}
-ifoCAST_longterm_dict = match_ifo_naive_forecasts_dates(ifoCast_longterm, ifoCAST_longterm_dict)
+ifoCAST_longterm_dict = {"ifoCAST": ifoCAST_longterm}
+ifoCAST_longterm_dict = match_ifoCAST_naive_forecasts_dates(ifo_qoq_forecasts, ifoCAST_longterm_dict)
 ifoCAST_longterm = ifoCAST_longterm_dict['ifoCAST']
+#show(ifoCAST_longterm)
 
 
 ## match towards ifoCAST availability
 # ifo normal forecasts
 ifo_qoq_forecasts_dict = {"ifo": ifo_qoq_forecasts}
-ifo_qoq_forecasts_dict = match_ifo_naive_forecasts_dates(ifoCast_longterm, ifo_qoq_forecasts_dict)
+ifo_qoq_forecasts_dict = match_ifoCAST_naive_forecasts_dates(ifoCAST_longterm, ifo_qoq_forecasts_dict)
 ifo_qoq_forecasts = ifo_qoq_forecasts_dict['ifo']
 
+#show(ifo_qoq_forecasts)
+
 # naive forecasts
-naive_qoq_dfs_dict = match_ifo_naive_forecasts_dates(ifoCast_longterm, naive_qoq_dfs_dict)
+naive_qoq_dfs_dict = match_ifoCAST_naive_forecasts_dates(ifoCAST_longterm, naive_qoq_dfs_dict)
+#show(next(iter(naive_qoq_dfs_dict.values())))
+
 
 
 
@@ -326,7 +373,7 @@ def qoq_error_evaluation_pipeline(ifo_qoq_df, naive_qoq_dict,
     # Error Series
     ifo_qoq_error_path = os.path.join(wd, '0_1_Output_Data', f'6_ifo_qoq_error_series_ifoCASTset{naive_str}')
     # Error Tables
-    ifo_qoq_table_path = os.path.join(table_folder, f'6_ifo_qoq_evaluations_ifoCASTset{naive_str}')
+    ifo_qoq_table_path = os.path.join(table_folder, f'6_ifo{CAST}_qoq_evaluations_ifoCASTset{naive_str}')
 
     ## Naive
     # Error Series
@@ -650,6 +697,18 @@ def qoq_error_evaluation_pipeline(ifo_qoq_df, naive_qoq_dict,
                             save_path=latest_eval_error_bars_path,
                             save_name=f'Joint_Quarterly_{metric}_latest_eval_ifoCASTset.png'
                                 )
+        
+  
+  
+    # --------------------------------------------------------------------------------------------------
+    # Clean folder structure
+    # --------------------------------------------------------------------------------------------------
+
+    if ifoCAST_mode==False and naive_mode==False:
+        shutil.rmtree(naive_qoq_table_path)
+
+
+    
 
 
 

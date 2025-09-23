@@ -865,10 +865,12 @@ for name, naive_df in naive_qoq_dfs_dict.items():
 
 
 ## Filter for ifoCAST dates
-
+#show(ifo_qoq_forecasts)
+#show(ifoCAst_Qm1_Q0_Q1_filtered)
 ifo_qoq_forecasts = ifo_qoq_forecasts.loc[:, 
     ifo_qoq_forecasts.columns.to_series().dt.to_period('Q').isin(
                                 ifoCAst_Qm1_Q0_Q1_filtered.T.columns.to_series().dt.to_period('Q'))]
+#show(ifo_qoq_forecasts)
 
 #show(ifo_qoq_forecasts)
 
@@ -1285,7 +1287,7 @@ for graph_type, parent_path in ifoCAST_graph_folders.items():
         ## Clear 
         if settings.clear_result_folders:
             folder_clear(full_path)
-            
+
         ifoCAST_paths[graph_type][sub] = full_path
 
 

@@ -84,41 +84,84 @@ def match_ifo_naive_forecasts_dates(ifo_qoq_forecasts, naive_qoq_dfs_dict):
     """
 
     if settings.match_ifo_naive_dates:
-
         for key, naive_df in naive_qoq_dfs_dict.items():
-            
+        
             # Convert to datetime
             ifo_cols_dt = pd.to_datetime(ifo_qoq_forecasts.columns)
-            ifo_rows_dt = pd.to_datetime(ifo_qoq_forecasts.index)
-
             # Build sets of year-quarter pairs for IFO
             ifo_col_quarters = {(d.year, d.quarter) for d in ifo_cols_dt}
-            ifo_row_quarters = {(d.year, d.quarter) for d in ifo_rows_dt}
 
             # Keep only valid naive columns (year-quarter match)
             valid_cols = [
                 col for col in naive_df.columns
                 if (pd.to_datetime(col).year, pd.to_datetime(col).quarter) in ifo_col_quarters
             ]
-
+            
             # Start filtered df
             filtered_df = pd.DataFrame(index=naive_df.index)
-
-            for col in valid_cols:
-
-                # For this col, filter rows by year-quarter match with IFO rows
-                valid_rows = [
-                    row for row in naive_df.index
-                    if (pd.to_datetime(row).year, pd.to_datetime(row).quarter) in ifo_row_quarters
-                ]
-
-                # Assign truncated series
-                filtered_df[col] = naive_df.loc[valid_rows, col]
-
+            for naive_col, ifo_col in zip(valid_cols, ifo_qoq_forecasts.columns):
+                # For this column pair, filter rows where the IFO column has non-NaN values
+                valid_ifo_mask = pd.notna(ifo_qoq_forecasts[ifo_col])
+                valid_ifo_rows = ifo_qoq_forecasts.index[valid_ifo_mask]
+                
+                # Find corresponding naive rows based on year-quarter matching
+                valid_naive_rows = []
+                for ifo_row in valid_ifo_rows:
+                    ifo_row_dt = pd.to_datetime(ifo_row)
+                    ifo_quarter = (ifo_row_dt.year, ifo_row_dt.quarter)
+                    
+                    for naive_row in naive_df.index:
+                        naive_row_dt = pd.to_datetime(naive_row)
+                        if (naive_row_dt.year, naive_row_dt.quarter) == ifo_quarter:
+                            valid_naive_rows.append(naive_row)
+                            break
+                
+                # Assign the filtered column
+                if valid_naive_rows:
+                    filtered_df[naive_col] = naive_df.loc[valid_naive_rows, naive_col]
+            
             # Save back
             naive_qoq_dfs_dict[key] = filtered_df
-
         return naive_qoq_dfs_dict
+
+"""
+if settings.match_ifo_naive_dates:
+
+    for key, naive_df in naive_qoq_dfs_dict.items():
+        
+        # Convert to datetime
+        ifo_cols_dt = pd.to_datetime(ifo_qoq_forecasts.columns)
+        ifo_rows_dt = pd.to_datetime(ifo_qoq_forecasts.index)
+
+        # Build sets of year-quarter pairs for IFO
+        ifo_col_quarters = {(d.year, d.quarter) for d in ifo_cols_dt}
+        ifo_row_quarters = {(d.year, d.quarter) for d in ifo_rows_dt}
+
+        # Keep only valid naive columns (year-quarter match)
+        valid_cols = [
+            col for col in naive_df.columns
+            if (pd.to_datetime(col).year, pd.to_datetime(col).quarter) in ifo_col_quarters
+        ]
+
+        # Start filtered df
+        filtered_df = pd.DataFrame(index=naive_df.index)
+
+        for col in valid_cols:
+
+            # For this col, filter rows by year-quarter match with IFO rows
+            valid_rows = [
+                row for row in naive_df.index
+                if (pd.to_datetime(row).year, pd.to_datetime(row).quarter) in ifo_row_quarters
+            ]
+
+            # Assign truncated series
+            filtered_df[col] = naive_df.loc[valid_rows, col]
+
+        # Save back
+        naive_qoq_dfs_dict[key] = filtered_df
+
+    return naive_qoq_dfs_dict
+    """
 
 
 
