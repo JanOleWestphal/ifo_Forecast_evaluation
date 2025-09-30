@@ -704,8 +704,8 @@ def qoq_error_evaluation_pipeline(ifo_qoq_df, naive_qoq_dict,
     # Clean folder structure
     # --------------------------------------------------------------------------------------------------
 
-    if ifoCAST_mode==False and naive_mode==False:
-        shutil.rmtree(naive_qoq_table_path)
+    #if ifoCAST_mode==False and naive_mode==False:
+    #    shutil.rmtree(naive_qoq_table_path)
 
 
     
