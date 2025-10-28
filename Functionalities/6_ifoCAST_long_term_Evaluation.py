@@ -621,12 +621,14 @@ def qoq_error_evaluation_pipeline(ifo_qoq_df, naive_qoq_dict,
     # First Evaluation
     plot_error_lines(ifo_qoq_errors_first, 
                     show=False, 
+                    ifocast_mode= True,
                     n_bars = 1,
                     save_path=first_eval_error_line_path,
                     save_name=f'ifo_QoQ_First_Eval_ifoCASTset_Error_Scatter.png')
 
     plot_error_lines(ifo_qoq_errors_first, naive_qoq_first_eval_error_series_dict,
                     show=False, 
+                    ifocast_mode= True,
                     n_bars = 1,
                     save_path=first_eval_error_line_path,
                     save_name=f'Joint_QoQ_First_Eval_ifoCASTset_Error_Scatter.png')
@@ -635,12 +637,14 @@ def qoq_error_evaluation_pipeline(ifo_qoq_df, naive_qoq_dict,
     # Latest Evaluation
     plot_error_lines(ifo_qoq_errors_latest, 
                     show=False, 
+                    ifocast_mode= True,
                     n_bars = 1,
                     save_path=latest_eval_error_line_path,
                     save_name=f'ifo_QoQ_Latest_Eval_ifoCASTset_Error_Scatter.png')
 
     plot_error_lines(ifo_qoq_errors_latest, naive_qoq_latest_eval_error_series_dict,
                     show=False, 
+                    ifocast_mode= True,
                     n_bars = 1,
                     save_path=latest_eval_error_line_path,
                     save_name=f'Joint_QoQ_Latest_Eval_ifoCASTset_Error_Scatter.png')

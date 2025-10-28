@@ -1319,38 +1319,41 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # Keys for dynamic naming
     eval_horizon_keys = ['first', 'latest', 'T45', 'T55']
 
+    # Store Metrics for plotting
+    metrics = ['ME', 'MAE', 'MSE', 'RMSE', 'SE']
+
     # --------------------------------------------------------------------------------------------------
     # Matched ifoCAST and ifo QoQ
     # --------------------------------------------------------------------------------------------------
 
     # Loop over metrics and evaluation horizons
-    for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfolder_names, eval_horizon_keys):
+    for metric in metrics:
 
-        for horizon, foldername in zip(eval_horizon_keys, subfolder_names):
-            
-            save_path = ifoCAST_paths['barplot'][foldername]
+            for horizon, foldername in zip(eval_horizon_keys, subfolder_names):
+                
+                save_path = ifoCAST_paths['barplot'][foldername]
 
-            # Access table entries by horizon key
-            ifoCAST_table  = ifoCast_filtered_error_table_dict.get(f'ifoCAst_error_tables_filtered_{horizon}{subset_str}')
-            ifoCAST_table = {"ifoCAST": ifoCAST_table} # The plotter function was built for a dict input
+                # Access table entries by horizon key
+                ifoCAST_table  = ifoCast_filtered_error_table_dict.get(f'ifoCAst_error_tables_filtered_{horizon}{subset_str}')
+                ifoCAST_table = {"ifoCAST": ifoCAST_table} # The plotter function was built for a dict input
 
-            ifo_table    = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}{subset_str}')
-            
-            if ifoCAST_table is None or ifo_table is None:
-                print(f"\n WARNING: {horizon} - missing table. This shouldnt happen \n")
-                continue
+                ifo_table    = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}{subset_str}')
+                
+                if ifoCAST_table is None or ifo_table is None:
+                    print(f"\n WARNING: {horizon} - missing table. This shouldnt happen \n")
+                    continue
 
-            # Call plotting function
-            plot_quarterly_metrics(
-                ifo_table,
-                ifoCAST_table,
-                metric_col=metric,
-                n_bars = 2,
-                scale_by_n=False,
-                show=False,
-                save_path=save_path,
-                save_name=f'0_ifo_ifoCAST_filterd_Quarterly_{metric}_{horizon}_eval.png'
-            )
+                # Call plotting function
+                plot_quarterly_metrics(
+                    ifo_table,
+                    ifoCAST_table,
+                    metric_col=metric,
+                    n_bars = 2,
+                    scale_by_n=False,
+                    show=False,
+                    save_path=save_path,
+                    save_name=f'0_ifo_ifoCAST_filterd_Quarterly_{metric}_{horizon}_eval.png'
+                )
 
 
 
@@ -1359,7 +1362,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # --------------------------------------------------------------------------------------------------
 
     # Loop over metrics and evaluation horizons
-    for metric, subfolder, eval_key in zip(['ME', 'MAE', 'MSE', 'RMSE', 'SE'], subfolder_names, eval_horizon_keys):
+    for metric in metrics:
 
         for horizon, foldername in zip(eval_horizon_keys, subfolder_names):
             
@@ -1462,6 +1465,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
         plot_error_lines(
             ifo_error_df,
             filtered_error_df,
+            ifocast_mode= True,
             n_bars = 2,
             title=f"ifoCAST_filtered_{horizon.capitalize()}",
             show=False,

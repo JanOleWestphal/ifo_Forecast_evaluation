@@ -74,7 +74,7 @@ evaluation_limit_quarter = 1            # 1,2,3 or 4; set as integer
 # ==================================================================================================
 
 ## Decide how many quarters to plot in the Quarterly Evaluation Module; int, should be more than 
-QoQ_eval_n_bars = 10  # int in [1,10]; Remember 0-indexing: n_bars = 5 plots Q0-Q4
+QoQ_eval_n_bars = 7  # int in [1,10]; Remember 0-indexing: n_bars = 5 plots Q0-Q4
 
 ## Define whether to match the dates of available ifo QoQ Forecasts for the naive forecaster
 match_ifo_naive_dates = True  # True or False

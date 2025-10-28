@@ -1019,7 +1019,7 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
 # --------------------------------------------------------------------------------------------------
 
 def plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8),
-                       n_bars: int = 10, show: bool = False,
+                       n_bars: int = 10, show: bool = False, ifocast_mode: bool = False,
                        save_path: Optional[str] = None, save_name: Optional[str] = None):
     """
     Create a plot with vertical lines for columns Q0-Q9, where each value is plotted as a point.
@@ -1049,7 +1049,11 @@ def plot_error_lines(*args, title: Optional[str] = None, figsize: tuple = (12, 8
     for arg in args:
         if isinstance(arg, pd.DataFrame):
             dfs.append(arg)
-            df_names.append(f"ifo Forecast")
+            if ifocast_mode:
+                df_names.append(f"ifoCAST")
+            else:
+                df_names.append(f"ifo Forecast")
+                
         elif isinstance(arg, dict):
             for name, df in arg.items():
                 if isinstance(df, pd.DataFrame):
