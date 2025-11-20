@@ -36,6 +36,8 @@ Functions:
 print(" \n Data Processing started ... \n")
 
 
+
+
 # ==================================================================================================
 #                                           SETUP
 # ==================================================================================================
@@ -66,6 +68,7 @@ pd.set_option('display.max_columns', None)
 
 
 
+
 # ==================================================================================================
 #                                IMPORT CORE CUSTOM FUNCTIONALITIES
 # ==================================================================================================
@@ -85,9 +88,37 @@ import ifo_forecast_evaluation_settings as settings
 
 
 
+
+
+
+
+# ==================================================================================================
+#                                DEFINE OUTOUT DIRECTORIES
+# ==================================================================================================
+
+
+## GDP
+output_dir_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_GDP_series')
+os.makedirs(output_dir_gdp, exist_ok=True)
+
+## GVA
+output_dir_gva = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_GVA_series')
+os.makedirs(output_dir_gva, exist_ok=True)
+
+## ifo qoq forecasts
+ifo_qoq_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_series')
+os.makedirs(output_dir_gdp, exist_ok=True)
+
+
+
+
+
+
+
+
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
-#                                    DATA PROCESSING - GDP                                         #
+#                                  DATA PROCESSING - Functions                                     #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
@@ -176,84 +207,298 @@ def get_yoy(df):
 
 
 # ==================================================================================================
-#                                    Bundesbank Real-Time GDP
+#                                    Load Real-Time data
 # ==================================================================================================
 
-# --------------------------------------------------------------------------------------------------
-# Import Data via Bundesbank API or locally
-# --------------------------------------------------------------------------------------------------
 
-# Output filename
-rt_filename = 'Bundesbank_GDP_raw.csv'
-gdp_filepath = os.path.join(wd, "0_0_Data", "1_GDP_Data")
-rt_filepath = os.path.join( gdp_filepath, rt_filename)
-
-
-# Get file
-# Optional API-pull:
-if settings.api_pull == True:
-    # Bundesbank API link
-    url = 'https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AG1.CA010.A.I?format=csv&lang=de'
-
-    # Download and save the CSV file
-    response = requests.get(url)
-    if response.status_code == 200:
-        with open(rt_filepath, 'wb') as f:
-            f.write(response.content)
-        print(f"Bundesbank data downloaded and saved to: {rt_filepath} ... \n ")
-    else:
-        raise FileNotFoundError(f"""Failed to download file. 
-                                Library: requests,  Status code: {response.status_code}.
-                                Try again or use local version of the file (api_pull = False)""")
-
-elif settings.api_pull == False:
-    print('Attention: local version of the data is being used, set api_pull = True for real-time data \n')
-
-else:
-    raise ValueError('ERROR: api_pull must be set to either True or False, check settings file \n')
-
-
-
-# --------------------------------------------------------------------------------------------------
-# Reformat into a usable dataframe
-# --------------------------------------------------------------------------------------------------
-
-# Load first line to get headers
-with open(rt_filepath, encoding="utf-8") as f:
-    header = f.readline().strip().split(';')
-
-# Load data (stored in row 12 onwards)
-gdp_rt = pd.read_csv(rt_filepath, skiprows=11, names=header, sep=';', index_col=0, na_values=['', ' '])
-
-# Process the Real-Time GDP data
-gdp_rt = process_BB_GDP(gdp_rt)
+def process_realtime_data(rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GDP_raw.csv', 
+                          api_link='https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AG1.CA010.A.I?format=csv&lang=de',
+                          data_name='GDP', 
+                          output_dir_df=output_dir_gdp):
+    """
+    Load real-time GDP and GVA data from Bundesbank API or local file.
+    Process and return the cleaned DataFrame.
+    """
  
+    # --------------------------------------------------------------------------------------------------
+    # Import Data via Bundesbank API or locally
+    # --------------------------------------------------------------------------------------------------
 
-# Inspect
-# show(rt_gdp)
-
-print("Data cleaned ... \n")
-
-
-
-# --------------------------------------------------------------------------------------------------
-# Create quarterly growth rates or changes: df_qoq (Quarter over Quarter)
-# --------------------------------------------------------------------------------------------------
-
-gdp_qoq_rt = get_qoq(gdp_rt)
-
-# Inspect
-# print(df_qoq.head())
-#show(gdp_qoq_rt)
+    # Output filename "1_GDP_Data"
+    rt_filepath = os.path.join( wd, "0_0_Data", rt_foldername, rt_filename)
 
 
-# --------------------------------------------------------------------------------------------------
-# Create yearly growth rates or changes: df_yoy (Year over Year)
-# --------------------------------------------------------------------------------------------------
+    # Get file
+    # Optional API-pull:
+    if settings.api_pull == True:
+        # Bundesbank API link
+        url = api_link
 
-gdp_yoy_rt = get_yoy(gdp_qoq_rt)
+        # Download and save the CSV file
+        response = requests.get(url)
+        if response.status_code == 200:
+            with open(rt_filepath, 'wb') as f:
+                f.write(response.content)
+            print(f"Bundesbank {data_name} data downloaded and saved to: {rt_filepath} ... \n ")
+        else:
+            raise FileNotFoundError(f"""Failed to download file. 
+                                    Library: requests,  Status code: {response.status_code}.
+                                    Try again or use local version of the file (api_pull = False)""")
 
-# show(df_yoy_rt)
+    elif settings.api_pull == False:
+        print('Attention: local version of the data is being used, set api_pull = True for real-time data \n')
+
+    else:
+        raise ValueError('ERROR: api_pull must be set to either True or False, check settings file \n')
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Reformat into a usable dataframe
+    # --------------------------------------------------------------------------------------------------
+
+    # Load first line to get headers
+    with open(rt_filepath, encoding="utf-8") as f:
+        header = f.readline().strip().split(';')
+
+    # Load data (stored in row 12 onwards)
+    df_rt = pd.read_csv(rt_filepath, skiprows=11, names=header, sep=';', index_col=0, na_values=['', ' '])
+
+    # Process the Real-Time GDP data
+    df_rt = process_BB_GDP(df_rt)
+    
+    # Inspect
+    # show(rt_gdp)
+
+    print("Data cleaned ... \n")
+
+    # --------------------------------------------------------------------------------------------------
+    # Create quarterly growth rates or changes: df_qoq (Quarter over Quarter)
+    # --------------------------------------------------------------------------------------------------
+
+    df_qoq_rt = get_qoq(df_rt)
+
+    # Inspect
+    # print(df_qoq.head())
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Create yearly growth rates or changes: df_yoy (Year over Year)
+    # --------------------------------------------------------------------------------------------------
+
+    df_yoy_rt = get_yoy(df_qoq_rt)
+
+    # show(df_yoy_rt)
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Store Real-Time Data
+    # --------------------------------------------------------------------------------------------------
+
+    # Define file paths
+    df_path_rt = os.path.join(output_dir_df, 'absolute_rt_GDP.xlsx')
+    df_qoq_path_rt = os.path.join(output_dir_df, 'qoq_rt_GDP_data.xlsx')
+    df_yoy_path_rt = os.path.join(output_dir_df, 'yoy_rt_GDP_data.xlsx')
+
+    # Save files
+    df_rt.to_excel(df_path_rt, index=True)      
+    df_qoq_rt.to_excel(df_qoq_path_rt, index=True)
+    df_yoy_rt.to_excel(df_yoy_path_rt, index=True)
+
+
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Return raw, quarterly and yearly Real-Time Data and the filepath
+    # --------------------------------------------------------------------------------------------------
+
+    return df_rt, df_qoq_rt, df_yoy_rt
+
+
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# ==================================================================================================
+#                           Functions: Create and Store Evaluation DataFrames
+# ==================================================================================================
+# -------------------------------------------------------------------------------------------------#
+
+
+
+def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combined, output_dir_df, data_name):
+
+    # --------------------------------------------------------------------------------------------------
+    # First Release Time Series
+    # --------------------------------------------------------------------------------------------------
+
+    # Define a function which selects the first instance of a new GDP release
+    def build_first_release_series(df_input):
+        """
+        Build a DataFrame containing the last (most recent) value from each column of df_input,
+        along with its corresponding index. If the last value's index is the same as the previous,
+        skip it to avoid duplicates.
+        """
+        last_indices = []
+        last_values = []
+        prev_index = None
+
+        for col in df_input.columns:
+            # Drop NaNs to get the last valid value
+            col_data = df_input[col].dropna()
+            if not col_data.empty:
+                idx = col_data.index[-1]
+                if idx != prev_index:
+                    last_indices.append(idx)
+                    last_values.append(col_data.iloc[-1])
+                    prev_index = idx
+
+        result_df = pd.DataFrame({'value': last_values}, index=last_indices)
+        result_df.index.name = 'date'
+        return result_df
+
+
+    # Call this function on absolute, qoq and yoy
+    first_release_df = build_first_release_series(df_combined)
+    first_release_qoq_df = build_first_release_series(df_qoq_combined)
+    first_release_yoy_df = build_first_release_series(df_yoy_combined)
+
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Latest Release Time Series
+    # --------------------------------------------------------------------------------------------------
+
+    # Latest release: take the last (most recent) column from each DataFrame, keep its index and values
+    latest_release_df = df_combined.iloc[:, -1].to_frame(name='value')
+    latest_release_qoq_df = df_qoq_combined.iloc[:, -1].to_frame(name='value')
+    latest_release_yoy_df = df_yoy_combined.iloc[:, -1].to_frame(name='value')
+
+    # Truncate to only rows present in the corresponding first_release_dfs by index
+    latest_release_df = latest_release_df.loc[first_release_df.index]
+    latest_release_qoq_df = latest_release_qoq_df.loc[first_release_qoq_df.index]
+    latest_release_yoy_df = latest_release_yoy_df.loc[first_release_yoy_df.index]
+
+
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Revision Time Series
+    # --------------------------------------------------------------------------------------------------
+
+    # Calculate revision as first_release - latest_release
+    revision_df = first_release_df['value'] - latest_release_df['value']
+    revision_df = revision_df.to_frame(name='revision')
+
+    revision_qoq_df = first_release_qoq_df['value'] - latest_release_qoq_df['value']
+    revision_qoq_df = revision_qoq_df.to_frame(name='revision')
+
+    revision_yoy_df = first_release_yoy_df['value'] - latest_release_yoy_df['value']
+    revision_yoy_df = revision_yoy_df.to_frame(name='revision')
+
+
+
+
+
+
+    # =================================================================================================#
+    #                                          Store Data                                              #
+    # =================================================================================================#
+
+
+    # Ensure directory exists
+    output_dir_df = os.path.join(wd, '0_0_Data', f'2_Processed_{data_name}_Data', f'1_{data_name}_series')
+    os.makedirs(output_dir_df, exist_ok=True)
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Combined DataSet
+    # --------------------------------------------------------------------------------------------------
+
+    # Define file paths
+    df_path_comb = os.path.join(output_dir_df, f'absolute_combined_{data_name}.xlsx')
+    df_qoq_path_comb = os.path.join(output_dir_df, f'qoq_combined_{data_name}_data.xlsx')
+    df_yoy_path_comb = os.path.join(output_dir_df, f'yoy_combined_{data_name}_data.xlsx')
+
+    # Save files
+    df_combined.to_excel(df_path_comb, index=True)      
+    df_qoq_combined.to_excel(df_qoq_path_comb, index=True)
+    df_yoy_combined.to_excel(df_yoy_path_comb, index=True)
+
+
+
+
+    # ==================================================================================================
+    #  Evaluation Time Series
+    # ==================================================================================================
+
+    # Ensure directory exists
+    output_dir_ts = os.path.join(wd, '0_0_Data', f'2_Processed_{data_name}_Data', f'2_{data_name}_Evaluation_series')
+    output_dir_ts_2 = os.path.join(wd, '0_1_Output_Data', f'1_{data_name}_Evaluation_series')
+
+    os.makedirs(output_dir_ts, exist_ok=True)
+    os.makedirs(output_dir_ts_2, exist_ok=True)
+
+    # --------------------------------------------------------------------------------------------------
+    # First Release
+    # --------------------------------------------------------------------------------------------------
+
+    # Save these to two locations:
+
+    for output_dir_ts in [output_dir_ts, output_dir_ts_2]:
+        # Define file paths
+        first_release_path = os.path.join(output_dir_ts, f'first_release_absolute_{data_name}.xlsx')
+        first_release_qoq_path = os.path.join(output_dir_ts, f'first_release_qoq_{data_name}.xlsx')
+        first_release_yoy_path = os.path.join(output_dir_ts, f'first_release_yoy_{data_name}.xlsx')
+
+        # Save first release files
+        first_release_df.to_excel(first_release_path, index=True)
+        first_release_qoq_df.to_excel(first_release_qoq_path, index=True)
+        first_release_yoy_df.to_excel(first_release_yoy_path, index=True)
+
+
+        # ---------------------------------------------------------------------------------------------
+        # Latest Release
+        # ---------------------------------------------------------------------------------------------
+
+        # Define file paths
+        latest_release_path = os.path.join(output_dir_ts, f'latest_release_absolute_{data_name}.xlsx')
+        latest_release_qoq_path = os.path.join(output_dir_ts, f'latest_release_qoq_{data_name}.xlsx')
+        latest_release_yoy_path = os.path.join(output_dir_ts, f'latest_release_yoy_{data_name}.xlsx')
+
+        # Save latest release files
+        latest_release_df.to_excel(latest_release_path, index=True)
+        latest_release_qoq_df.to_excel(latest_release_qoq_path, index=True)
+        latest_release_yoy_df.to_excel(latest_release_yoy_path, index=True)
+
+
+        # ---------------------------------------------------------------------------------------------
+        # Revision Data
+        # ---------------------------------------------------------------------------------------------
+
+        # Define file paths
+        revision_path = os.path.join(output_dir_ts, f'revision_absolute_{data_name}.xlsx')
+        revision_qoq_path = os.path.join(output_dir_ts, f'revision_qoq_{data_name}.xlsx')
+        revision_yoy_path = os.path.join(output_dir_ts, f'revision_yoy_{data_name}.xlsx')
+
+        # Save revision files
+        revision_df.to_excel(revision_path, index=True)
+        revision_qoq_df.to_excel(revision_qoq_path, index=True)
+        revision_yoy_df.to_excel(revision_yoy_path, index=True)
+
+
+
+
+
+
 
 
 
@@ -265,19 +510,40 @@ gdp_yoy_rt = get_yoy(gdp_qoq_rt)
 
 
 # -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                      PROCESS GDP DATA                                            #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+
+# ==================================================================================================
+#                                    Process BB Real-Time Data
+# ==================================================================================================
+
+gdp_rt, gdp_qoq_rt, gdp_yoy_rt = process_realtime_data(
+                          rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GDP_raw.csv', 
+                          api_link='https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AG1.CA010.A.I?format=csv&lang=de',
+                          data_name='GDP', 
+                          output_dir_df=output_dir_gdp)
+
+
+
+
+
 # ==================================================================================================
 #                                    Process 1995-2005 data
 # ==================================================================================================
-# -------------------------------------------------------------------------------------------------#
 
 
 # -------------------------------------------------------------------------------------------------#
 # Import
 # -------------------------------------------------------------------------------------------------#
 
+gdp_filepath = os.path.join(wd, "0_0_Data", "1_GDP_Data")
+
 # Filenames
 filename_95_05 = 'GDP_1995-2005_release.xlsx'
-filepath_95_05 = os.path.join( gdp_filepath, filename_95_05)
+filepath_95_05 = os.path.join(gdp_filepath, filename_95_05)
 
 # Load data (stored in row 10 onwards)
 gdp_95_05 = pd.read_excel(
@@ -291,7 +557,6 @@ gdp_95_05 = pd.read_excel(
 
 # Reformat
 gdp_95_05 = process_BB_GDP(gdp_95_05, col_convert= True, col_subset= False)
-
 
 
 
@@ -314,13 +579,9 @@ gdp_95_05 = 100 * gdp_95_05 / avg_2000
 
 
 
-
-
-# -------------------------------------------------------------------------------------------------#
 # ==================================================================================================
 #                                    Joint long-term dataset
 # ==================================================================================================
-# -------------------------------------------------------------------------------------------------#
 
 
 # ==================================================================================================
@@ -466,8 +727,6 @@ if settings.extend_rt_data_backwards:
 
 
 
-
-
 # ==================================================================================================
 # Get qoq and yoy
 # ==================================================================================================
@@ -480,6 +739,29 @@ gdp_yoy_combined = get_yoy(gdp_qoq_combined)
 
 
 
+# ==================================================================================================
+# STORE GDP DATA
+# ==================================================================================================
+
+build_store_evaluation_timeseries(df_combined=gdp_combined, 
+                                  df_qoq_combined=gdp_qoq_combined, 
+                                  df_yoy_combined=gdp_yoy_combined, 
+                                  output_dir_df=output_dir_gdp, data_name='GDP')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -487,80 +769,44 @@ gdp_yoy_combined = get_yoy(gdp_qoq_combined)
 
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
-#                                    Evaluation Time Series                                        #
+#                 DATA PROCESSING - Bruttowertschöpfung (gross value added)                        #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
 
-# --------------------------------------------------------------------------------------------------
-# First Release Time Series
-# --------------------------------------------------------------------------------------------------
 
-# Define a function which selects the first instance of a new GDP release
-def build_first_release_series(df_input):
-    """
-    Build a DataFrame containing the last (most recent) value from each column of df_input,
-    along with its corresponding index. If the last value's index is the same as the previous,
-    skip it to avoid duplicates.
-    """
-    last_indices = []
-    last_values = []
-    prev_index = None
+if settings.run_gva_evaluation:
 
-    for col in df_input.columns:
-        # Drop NaNs to get the last valid value
-        col_data = df_input[col].dropna()
-        if not col_data.empty:
-            idx = col_data.index[-1]
-            if idx != prev_index:
-                last_indices.append(idx)
-                last_values.append(col_data.iloc[-1])
-                prev_index = idx
+    print(" \n Starting GVA data processing ... \n")
 
-    result_df = pd.DataFrame({'value': last_values}, index=last_indices)
-    result_df.index.name = 'date'
-    return result_df
+    # ==================================================================================================
+    #                                    Process BB Real-Time Data
+    # ==================================================================================================
+
+    gva_rt, gva_qoq_rt, gva_yoy_rt= process_realtime_data(
+                            rt_foldername="1_GVA_Data", rt_filename='Bundesbank_GVA_raw.csv', 
+                            api_link='https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AU1.CA010.A.I?format=csv&lang=de',
+                            data_name='GVA', 
+                            output_dir_df=output_dir_gva)
+
+    
 
 
-# Call this function on absolute, qoq and yoy
-first_release_gdp = build_first_release_series(gdp_combined)
-first_release_qoq_gdp = build_first_release_series(gdp_qoq_combined)
-first_release_yoy_gdp = build_first_release_series(gdp_yoy_combined)
+    # ==================================================================================================
+    # STORE GVA DATA
+    # ==================================================================================================
 
-
-
-
-# --------------------------------------------------------------------------------------------------
-# Latest Release Time Series
-# --------------------------------------------------------------------------------------------------
-
-# Latest release: take the last (most recent) column from each DataFrame, keep its index and values
-latest_release_gdp = gdp_combined.iloc[:, -1].to_frame(name='value')
-latest_release_qoq_gdp = gdp_qoq_combined.iloc[:, -1].to_frame(name='value')
-latest_release_yoy_gdp = gdp_yoy_combined.iloc[:, -1].to_frame(name='value')
-
-# Truncate to only rows present in the corresponding first_release_dfs by index
-latest_release_gdp = latest_release_gdp.loc[first_release_gdp.index]
-latest_release_qoq_gdp = latest_release_qoq_gdp.loc[first_release_qoq_gdp.index]
-latest_release_yoy_gdp = latest_release_yoy_gdp.loc[first_release_yoy_gdp.index]
+    build_store_evaluation_timeseries(df_combined=gva_rt, 
+                                    df_qoq_combined=gva_qoq_rt, 
+                                    df_yoy_combined=gva_yoy_rt, 
+                                    output_dir_df=output_dir_gva, data_name='GVA')
 
 
 
 
 
-# --------------------------------------------------------------------------------------------------
-# Revision Time Series
-# --------------------------------------------------------------------------------------------------
 
-# Calculate revision as first_release - latest_release
-revision_gdp = first_release_gdp['value'] - latest_release_gdp['value']
-revision_gdp = revision_gdp.to_frame(name='revision')
 
-revision_qoq_gdp = first_release_qoq_gdp['value'] - latest_release_qoq_gdp['value']
-revision_qoq_gdp = revision_qoq_gdp.to_frame(name='revision')
-
-revision_yoy_gdp = first_release_yoy_gdp['value'] - latest_release_yoy_gdp['value']
-revision_yoy_gdp = revision_yoy_gdp.to_frame(name='revision')
 
 
 
@@ -583,6 +829,8 @@ revision_yoy_gdp = revision_yoy_gdp.to_frame(name='revision')
 #                          DATA PROCESSING - quarterly ifo Forecasts                               #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
+
+
 
 # ==================================================================================================
 #  Load ifo qoq Forecasts
@@ -644,135 +892,9 @@ ifo_qoq = ifo_qoq_raw.dropna(how='all')
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# -------------------------------------------------------------------------------------------------#
-# =================================================================================================#
-#                                        Store Output                                              #
-# =================================================================================================#
-# -------------------------------------------------------------------------------------------------#
-
-
 # ==================================================================================================
-#  GDP Data
+#  Store Processed values
 # ==================================================================================================
-
-# Ensure directory exists
-output_dir_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_GDP_series')
-os.makedirs(output_dir_gdp, exist_ok=True)
-
-
-# --------------------------------------------------------------------------------------------------
-# Real-time GDP
-# --------------------------------------------------------------------------------------------------
-
-# Define file paths
-df_path_rt = os.path.join(output_dir_gdp, 'absolute_rt_GDP.xlsx')
-df_qoq_path_rt = os.path.join(output_dir_gdp, 'qoq_rt_GDP_data.xlsx')
-df_yoy_path_rt = os.path.join(output_dir_gdp, 'yoy_rt_GDP_data.xlsx')
-
-# Save files
-gdp_rt.to_excel(df_path_rt, index=True)      
-gdp_qoq_rt.to_excel(df_qoq_path_rt, index=True)
-gdp_yoy_rt.to_excel(df_yoy_path_rt, index=True)
-
-
-# --------------------------------------------------------------------------------------------------
-# Combined DataSet
-# --------------------------------------------------------------------------------------------------
-
-# Define file paths
-df_path_comb = os.path.join(output_dir_gdp, 'absolute_combined_GDP.xlsx')
-df_qoq_path_comb = os.path.join(output_dir_gdp, 'qoq_combined_GDP_data.xlsx')
-df_yoy_path_comb = os.path.join(output_dir_gdp, 'yoy_combined_GDP_data.xlsx')
-
-# Save files
-gdp_combined.to_excel(df_path_comb, index=True)      
-gdp_qoq_combined.to_excel(df_qoq_path_comb, index=True)
-gdp_yoy_combined.to_excel(df_yoy_path_comb, index=True)
-
-
-
-
-# ==================================================================================================
-#  Evaluation Time Series
-# ==================================================================================================
-
-# Ensure directory exists
-output_dir_ts = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_Evaluation_series')
-output_dir_ts_2 = os.path.join(wd, '0_1_Output_Data', '1_Evaluation_series')
-
-os.makedirs(output_dir_ts, exist_ok=True)
-os.makedirs(output_dir_ts_2, exist_ok=True)
-
-# --------------------------------------------------------------------------------------------------
-# First Release
-# --------------------------------------------------------------------------------------------------
-
-# Save these to two locations:
-
-for output_dir_ts in [output_dir_ts, output_dir_ts_2]:
-    # Define file paths
-    first_release_path = os.path.join(output_dir_ts, 'first_release_absolute_GDP.xlsx')
-    first_release_qoq_path = os.path.join(output_dir_ts, 'first_release_qoq_GDP.xlsx')
-    first_release_yoy_path = os.path.join(output_dir_ts, 'first_release_yoy_GDP.xlsx')
-
-    # Save first release files
-    first_release_gdp.to_excel(first_release_path, index=True)
-    first_release_qoq_gdp.to_excel(first_release_qoq_path, index=True)
-    first_release_yoy_gdp.to_excel(first_release_yoy_path, index=True)
-
-
-    # ---------------------------------------------------------------------------------------------
-    # Latest Release
-    # ---------------------------------------------------------------------------------------------
-
-    # Define file paths
-    latest_release_path = os.path.join(output_dir_ts, 'latest_release_absolute_GDP.xlsx')
-    latest_release_qoq_path = os.path.join(output_dir_ts, 'latest_release_qoq_GDP.xlsx')
-    latest_release_yoy_path = os.path.join(output_dir_ts, 'latest_release_yoy_GDP.xlsx')
-
-    # Save latest release files
-    latest_release_gdp.to_excel(latest_release_path, index=True)
-    latest_release_qoq_gdp.to_excel(latest_release_qoq_path, index=True)
-    latest_release_yoy_gdp.to_excel(latest_release_yoy_path, index=True)
-
-
-    # ---------------------------------------------------------------------------------------------
-    # Revision Data
-    # ---------------------------------------------------------------------------------------------
-
-    # Define file paths
-    revision_path = os.path.join(output_dir_ts, 'revision_absolute_GDP.xlsx')
-    revision_qoq_path = os.path.join(output_dir_ts, 'revision_qoq_GDP.xlsx')
-    revision_yoy_path = os.path.join(output_dir_ts, 'revision_yoy_GDP.xlsx')
-
-    # Save revision files
-    revision_gdp.to_excel(revision_path, index=True)
-    revision_qoq_gdp.to_excel(revision_qoq_path, index=True)
-    revision_yoy_gdp.to_excel(revision_yoy_path, index=True)
-
-
-
-
-# ==================================================================================================
-#  Quarterly ifo Forecasts
-# ==================================================================================================
-
-## Folder
-ifo_qoq_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_series')
-os.makedirs(output_dir_gdp, exist_ok=True)
 
 ## Define file paths
 ifo_qoq_output_path = os.path.join(ifo_qoq_output_dir, 'ifo_qoq_forecasts.xlsx')
@@ -783,8 +905,21 @@ ifo_qoq.to_excel(ifo_qoq_output_path, index=True)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 # --------------------------------------------------------------------------------------------------
-print(f" \n Data Processing complete, results are in Subfolders {output_dir_gdp} and {output_dir_ts} of working directory {wd} \n")
+print(f" \n Data Processing complete, results are in Subfolders {output_dir_gdp} and {output_dir_gva} of working directory {wd} \n")
 # --------------------------------------------------------------------------------------------------
 
 

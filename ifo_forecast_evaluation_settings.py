@@ -58,6 +58,9 @@ api_pull = True # True or False; only set False if no internet connection
 # Q2-1995 and imputing it backwards to Q1-1989 (True)
 extend_rt_data_backwards = True # True or False
 
+# Decide whether to run the entire exercise on Gross Value Added as well
+run_gva_evaluation = True  # True or False
+
 # Define which quarter of which year should be the earliest data point, available from Q1-1970 onwards
 evaluation_limit_year = 1970            # from 1970 onwards; set as integer
 evaluation_limit_quarter = 1            # 1,2,3 or 4; set as integer
@@ -102,11 +105,11 @@ NOTE:
 """
 
 # Define the horizon of first releases which should be evaluated from below:
-first_release_lower_limit_year = 2010           # from 1989 onwards; set as integer
+first_release_lower_limit_year = 2022           # from 1989 onwards; set as integer
 first_release_lower_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
 # Define the horizon of first releases which should be evaluated from below:
-first_release_upper_limit_year = 2018          # from 1989 onwards; set as integer
+first_release_upper_limit_year = 2100          # from 1989 onwards; set as integer
 first_release_upper_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
 # Decide whether to filter for outliers within the evaluation intervall
