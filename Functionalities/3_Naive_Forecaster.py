@@ -259,7 +259,7 @@ if settings.clear_result_folders:
 # ==================================================================================================
 
 # Define directory
-input_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_GDP_series')
+input_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_combined_GDP_series')
 
 # Define file paths
 df_path = os.path.join(input_dir, 'absolute_combined_GDP.xlsx')

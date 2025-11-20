@@ -98,16 +98,17 @@ import ifo_forecast_evaluation_settings as settings
 
 
 ## GDP
-output_dir_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_GDP_series')
+output_dir_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_GDP_series')
 os.makedirs(output_dir_gdp, exist_ok=True)
 
 ## GVA
-output_dir_gva = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_GVA_series')
+output_dir_gva = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_GVA_series')
 os.makedirs(output_dir_gva, exist_ok=True)
 
 ## ifo qoq forecasts
 ifo_qoq_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_series')
-os.makedirs(output_dir_gdp, exist_ok=True)
+os.makedirs(ifo_qoq_output_dir, exist_ok=True)
+
 
 
 
@@ -297,9 +298,9 @@ def process_realtime_data(rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GD
     # --------------------------------------------------------------------------------------------------
 
     # Define file paths
-    df_path_rt = os.path.join(output_dir_df, 'absolute_rt_GDP.xlsx')
-    df_qoq_path_rt = os.path.join(output_dir_df, 'qoq_rt_GDP_data.xlsx')
-    df_yoy_path_rt = os.path.join(output_dir_df, 'yoy_rt_GDP_data.xlsx')
+    df_path_rt = os.path.join(output_dir_df, f'absolute_rt_{data_name}_data.xlsx')
+    df_qoq_path_rt = os.path.join(output_dir_df, f'qoq_rt_{data_name}_data.xlsx')
+    df_yoy_path_rt = os.path.join(output_dir_df, f'yoy_rt_{data_name}_data.xlsx')
 
     # Save files
     df_rt.to_excel(df_path_rt, index=True)      
@@ -413,25 +414,31 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     #                                          Store Data                                              #
     # =================================================================================================#
 
+    """
+    Only for GDP, as backward looking GVA is not relevant at this point
+    """
 
-    # Ensure directory exists
-    output_dir_df = os.path.join(wd, '0_0_Data', f'2_Processed_{data_name}_Data', f'1_{data_name}_series')
-    os.makedirs(output_dir_df, exist_ok=True)
 
 
-    # --------------------------------------------------------------------------------------------------
-    # Combined DataSet
-    # --------------------------------------------------------------------------------------------------
+    if data_name == 'GDP':
 
-    # Define file paths
-    df_path_comb = os.path.join(output_dir_df, f'absolute_combined_{data_name}.xlsx')
-    df_qoq_path_comb = os.path.join(output_dir_df, f'qoq_combined_{data_name}_data.xlsx')
-    df_yoy_path_comb = os.path.join(output_dir_df, f'yoy_combined_{data_name}_data.xlsx')
+        # Ensure directory exists
+        output_dir_df = os.path.join(wd, '0_0_Data', f'2_Processed_Data', f'1_combined_{data_name}_series')
+        os.makedirs(output_dir_df, exist_ok=True)
 
-    # Save files
-    df_combined.to_excel(df_path_comb, index=True)      
-    df_qoq_combined.to_excel(df_qoq_path_comb, index=True)
-    df_yoy_combined.to_excel(df_yoy_path_comb, index=True)
+        # --------------------------------------------------------------------------------------------------
+        # Combined DataSet
+        # --------------------------------------------------------------------------------------------------
+
+        # Define file paths
+        df_path_comb = os.path.join(output_dir_df, f'absolute_combined_{data_name}.xlsx')
+        df_qoq_path_comb = os.path.join(output_dir_df, f'qoq_combined_{data_name}_data.xlsx')
+        df_yoy_path_comb = os.path.join(output_dir_df, f'yoy_combined_{data_name}_data.xlsx')
+
+        # Save files
+        df_combined.to_excel(df_path_comb, index=True)      
+        df_qoq_combined.to_excel(df_qoq_path_comb, index=True)
+        df_yoy_combined.to_excel(df_yoy_path_comb, index=True)
 
 
 
@@ -441,7 +448,7 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     # ==================================================================================================
 
     # Ensure directory exists
-    output_dir_ts = os.path.join(wd, '0_0_Data', f'2_Processed_{data_name}_Data', f'2_{data_name}_Evaluation_series')
+    output_dir_ts = os.path.join(wd, '0_0_Data', f'2_Processed_Data', f'2_{data_name}_Evaluation_series')
     output_dir_ts_2 = os.path.join(wd, '0_1_Output_Data', f'1_{data_name}_Evaluation_series')
 
     os.makedirs(output_dir_ts, exist_ok=True)
@@ -898,6 +905,8 @@ ifo_qoq = ifo_qoq_raw.dropna(how='all')
 
 ## Define file paths
 ifo_qoq_output_path = os.path.join(ifo_qoq_output_dir, 'ifo_qoq_forecasts.xlsx')
+#os.makedirs(ifo_qoq_output_path, exist_ok=True)
+
 
 # Save files
 ifo_qoq.to_excel(ifo_qoq_output_path, index=True)   

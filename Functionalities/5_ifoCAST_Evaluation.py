@@ -106,7 +106,10 @@ naming_convention = settings.naming_convention
 
 # Select timeframes
 evaluation_limit_year = settings.evaluation_limit_year
-evaluation_limit_quarter = settings.evaluation_limit_quarter    
+evaluation_limit_quarter = settings.evaluation_limit_quarter   
+
+# Select whether to evaluate GVA predictions
+run_gva_evaluation = settings.run_gva_evaluation
 
 # Not used at the moment
 """
@@ -235,7 +238,7 @@ def load_excels_to_dict(folder_path):
 # Load Evaluation Data
 # --------------------------------------------------------------------------------------------------
 
-eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_Evaluation_series')
+eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
 
 ## First Releases
 qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
