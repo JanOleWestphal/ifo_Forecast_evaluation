@@ -146,6 +146,8 @@ for folder in [table_folder, graph_folder]:
 
 
 
+
+
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                                          LOAD IN DATA                                            #
@@ -155,7 +157,7 @@ for folder in [table_folder, graph_folder]:
 """
 - ifo Forecasts QoQ
 - ifo Forecast Release dates
-- Evaluation Series
+- Evaluation Series (GDP and GVA)
 """
 
 # ==================================================================================================
@@ -231,30 +233,9 @@ def load_excels_to_dict(folder_path):
     return dfs
 """
 
-## 
 
 
-# --------------------------------------------------------------------------------------------------
-# Load Evaluation Data
-# --------------------------------------------------------------------------------------------------
 
-eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
-
-## First Releases
-qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
-qoq_first_eval = pd.read_excel(qoq_path_first, index_col=0)
-#show(qoq_first_eval)
-
-
-## Latest Releases
-qoq_path_latest= os.path.join(eval_path, 'latest_release_qoq_GDP.xlsx')
-qoq_latest_eval = pd.read_excel(qoq_path_latest, index_col=0)
-#show(qoq_latest_eval)
-
-
-## Revision
-qoq_path_rev = os.path.join(eval_path, 'revision_qoq_GDP.xlsx')
-qoq_rev = pd.read_excel(qoq_path_rev, index_col=0)
 
 
 
@@ -383,37 +364,8 @@ ifocast_last_values.set_index('forecast_target', inplace=True)
 
 
 # --------------------------------------------------------------------------------------------------
-# Extract Evaluation Series and Forecast Values
+# Restructure ifoCAST data
 # --------------------------------------------------------------------------------------------------
-
-## EVALUATION SERIES: Schnellmeldung T+45, DEtailmeldung T+55
-
-## Extract Schnelllmeldung
-T45_eval = ifocast_raw[['Datum', 'BIP-Schnellmeldung (T+45)']].copy()
-
-# Rename and set index
-T45_eval.rename(columns={'BIP-Schnellmeldung (T+45)': 'GDP_T45_report'}, inplace=True)
-T45_eval.set_index(pd.to_datetime(T45_eval['Datum'], format='%d.%m.%Y'), inplace=True)
-
-# Rescale
-T45_eval.drop(columns='Datum', inplace=True)
-T45_eval.dropna(inplace=True)
-
-
-## Extract Detailmeldung
-T55_eval = ifocast_raw[['Datum', 'BIP-Detailmeldung (T+55)']].copy()
-
-# Rename and set index
-T55_eval.rename(columns={'BIP-Detailmeldung (T+55)': 'GDP_T55_report'}, inplace=True)
-T55_eval.set_index(pd.to_datetime(T55_eval['Datum'], format='%d.%m.%Y'), inplace=True)
-
-# Rescale
-T55_eval.drop(columns='Datum', inplace=True)
-T55_eval.dropna(inplace=True)
-
-#show(T45_eval)
-#show(T55_eval)
-
 
 ## FORECAST VALUES: Subset the forecast cols, time cols and target col
 ifocast_gdp = ifocast_raw[['Datum','BIP-Prognose', 'forecast_target']]
@@ -422,6 +374,12 @@ ifocast_gdp = ifocast_raw[['Datum','BIP-Prognose', 'forecast_target']]
 ifocast_gdp = ifocast_gdp.dropna(subset=['BIP-Prognose'])
 
 #show(ifocast_gdp)
+
+
+
+
+
+
 
 
 
@@ -565,7 +523,6 @@ ifoCAst_Qm1_Q0_Q1_full = horizon_merger(ifocast_Qminus1, ifocast_Q0, ifocast_Q1)
 # Filter ifoCAST dates towards the ifo Forecast Release dates
 # --------------------------------------------------------------------------------------------------
 
-"""THINK THROUGH WHETHER THIS DOES WHAT IT IS SUPPOSED TO DO"""
 
 # Define a filter function
 def filter_by_forecast_dates(df_1, date_df=ifo_forecast_dates) -> pd.DataFrame:
@@ -626,6 +583,80 @@ ifoCAst_Qm1_Q0_Q1_filtered = filter_by_forecast_dates(ifoCAst_Qm1_Q0_Q1_full)
 
 
 
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                      Get Evaluation Data                                         #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+
+# --------------------------------------------------------------------------------------------------
+# Load Bundesbank GDP and GVA Evaluation Data
+# --------------------------------------------------------------------------------------------------
+
+# Set paths
+eval_path_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
+eval_path_gva = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GVA_Evaluation_series')
+
+# Create dictionaries to hold the evaluation data for GDP and GVA
+qoq_first_eval_dict = {}
+qoq_latest_eval_dict = {}
+qoq_rev_dict = {}
+
+for data_name, eval_path in zip(['GDP', 'GVA'], [eval_path_gdp, eval_path_gva]):
+
+
+    ## First releases
+    qoq_path_first = os.path.join(eval_path, f'first_release_qoq_{data_name}.xlsx')
+    qoq_first_eval_dict[data_name] = pd.read_excel(qoq_path_first, index_col=0)
+
+    ## Latest releases
+    qoq_path_latest = os.path.join(eval_path, f'latest_release_qoq_{data_name}.xlsx')
+    qoq_latest_eval_dict[data_name] = pd.read_excel(qoq_path_latest, index_col=0)
+
+    ## Revision
+    qoq_path_rev = os.path.join(eval_path, f'revision_qoq_{data_name}.xlsx')
+    qoq_rev_dict[data_name] = pd.read_excel(qoq_path_rev, index_col=0)
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Extract Evaluation Series from ifoCAST CSVs
+# --------------------------------------------------------------------------------------------------
+
+## EVALUATION SERIES: Schnellmeldung T+45, DEtailmeldung T+55
+
+## Extract Schnelllmeldung
+T45_eval = ifocast_raw[['Datum', 'BIP-Schnellmeldung (T+45)']].copy()
+
+# Rename and set index
+T45_eval.rename(columns={'BIP-Schnellmeldung (T+45)': 'GDP_T45_report'}, inplace=True)
+T45_eval.set_index(pd.to_datetime(T45_eval['Datum'], format='%d.%m.%Y'), inplace=True)
+
+# Rescale
+T45_eval.drop(columns='Datum', inplace=True)
+T45_eval.dropna(inplace=True)
+
+
+## Extract Detailmeldung
+T55_eval = ifocast_raw[['Datum', 'BIP-Detailmeldung (T+55)']].copy()
+
+# Rename and set index
+T55_eval.rename(columns={'BIP-Detailmeldung (T+55)': 'GDP_T55_report'}, inplace=True)
+T55_eval.set_index(pd.to_datetime(T55_eval['Datum'], format='%d.%m.%Y'), inplace=True)
+
+# Rescale
+T55_eval.drop(columns='Datum', inplace=True)
+T55_eval.dropna(inplace=True)
+
+#show(T45_eval)
+#show(T55_eval)
 
 
 
@@ -760,8 +791,10 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
                           
                           naive_qoq_dfs_dict=naive_qoq_dfs_dict,
                           ifo_qoq_forecasts=ifo_qoq_forecasts,
-                          qoq_first_eval = qoq_first_eval, 
-                          qoq_latest_eval = qoq_latest_eval, 
+
+                          gdp_mode = True,
+                          qoq_first_eval_dict = qoq_first_eval_dict, 
+                          qoq_latest_eval_dict = qoq_latest_eval_dict, 
                           T45_eval = T45_eval, 
                           T55_eval = T55_eval):
 
@@ -772,17 +805,38 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # ==================================================================================================
 
     # --------------------------------------------------------------------------------------------------
+    # Set naming for the GVA case
+    # --------------------------------------------------------------------------------------------------
+
+    if not gdp_mode:
+        gva_string = '_GVA'
+    else:
+        gva_string = ''
+
+
+
+    # --------------------------------------------------------------------------------------------------
     # Filtered ifoCAST
     # --------------------------------------------------------------------------------------------------
 
     # Define names
-    ifocast_filtered_eval_df_names = ['ifoCAst_Qm1_Q0_Q1_filtered_first',
-                            'ifoCAst_Qm1_Q0_Q1_filtered_latest',
-                            'ifoCAst_Qm1_Q0_Q1_filtered_T45',
-                            'ifoCAst_Qm1_Q0_Q1_filtered_T55']
+    ifocast_filtered_eval_df_names = [f'ifoCAst_Qm1_Q0_Q1_filtered_first{gva_string}',
+                            f'ifoCAst_Qm1_Q0_Q1_filtered_latest{gva_string}',
+                            f'ifoCAst_Qm1_Q0_Q1_filtered_T45{gva_string}',
+                            f'ifoCAst_Qm1_Q0_Q1_filtered_T55{gva_string}']
+    
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        ifocast_filtered_eval_df_names = ifocast_filtered_eval_df_names[:2] 
+
 
     # Eval against first, latest, T45 and T55
-    eval_dfs = [qoq_first_eval, qoq_latest_eval, T45_eval, T55_eval]
+    if gdp_mode:
+        eval_dfs = [qoq_first_eval_dict['GDP'], qoq_latest_eval_dict['GDP'], T45_eval, T55_eval]
+
+    else:
+        eval_dfs = [qoq_first_eval_dict['GVA'], qoq_latest_eval_dict['GVA']]
+
 
     # Loop to create the eval dfs
     fitered_eval_dfs = {}
@@ -798,10 +852,14 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # --------------------------------------------------------------------------------------------------
 
     # Define names
-    ifocast_full_eval_df_names = ['ifoCAst_Qm1_Q0_Q1_full_first',
-                            'ifoCAst_Qm1_Q0_Q1_full_latest',
-                            'ifoCAst_Qm1_Q0_Q1_full_T45',
-                            'ifoCAst_Qm1_Q0_Q1_full_T55']
+    ifocast_full_eval_df_names = [f'ifoCAst_Qm1_Q0_Q1_full_first{gva_string}',
+                            f'ifoCAst_Qm1_Q0_Q1_full_latest{gva_string}',
+                            f'ifoCAst_Qm1_Q0_Q1_full_T45{gva_string}',
+                            f'ifoCAst_Qm1_Q0_Q1_full_T55{gva_string}']
+    
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        ifocast_full_eval_df_names = ifocast_full_eval_df_names[:2] 
 
 
     # Loop to create the eval dfs
@@ -821,10 +879,14 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # --------------------------------------------------------------------------------------------------
 
     # Define names
-    ifocast_last_eval_df_names = ['ifoCAst_last_rep_first',
-                            'ifoCAst_last_rep_latest',
-                            'ifoCAst_last_rep_T45',
-                            'ifoCAst_last_rep_T55']
+    ifocast_last_eval_df_names = [f'ifoCAst_last_rep_first{gva_string}',
+                            f'ifoCAst_last_rep_latest{gva_string}',
+                            f'ifoCAst_last_rep_T45{gva_string}',
+                            f'ifoCAst_last_rep_T55{gva_string}']
+    
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        ifocast_last_eval_df_names = ifocast_last_eval_df_names[:2] 
 
     # Loop to create the eval dfs
     last_rep_eval_dfs = {}
@@ -890,10 +952,14 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     #show(ifo_qoq_forecasts)
 
     ## Define names
-    ifo_qoq_matched_eval_df_names = ['ifo_qoq_matched_first',
-                            'ifo_qoq_matched_latest',
-                            'ifo_qoq_matched_T45',
-                            'ifo_qoq_matched_T55']
+    ifo_qoq_matched_eval_df_names = [f'ifo_qoq_matched_first{gva_string}',
+                            f'ifo_qoq_matched_latest{gva_string}',
+                            f'ifo_qoq_matched_T45',
+                            f'ifo_qoq_matched_T55']
+    
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        ifo_qoq_matched_eval_df_names = ifo_qoq_matched_eval_df_names[:2] 
 
 
     # Loop to create the eval dfs
@@ -927,10 +993,10 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # --------------------------------------------------------------------------------------------------
 
     # Paths
-    naive_qoq_matched_error_path = os.path.join(wd, '0_1_Output_Data', f'5_naive_qoq_error_series_matched_to_ifoCAST{subset_str}')
+    naive_qoq_matched_error_path = os.path.join(wd, '0_1_Output_Data', f'5_naive_qoq_error_series{gva_string}_matched_to_ifoCAST{subset_str}')
     os.makedirs(naive_qoq_matched_error_path, exist_ok=True)
 
-    naive_qoq_matched_table_path = os.path.join(table_folder, f'4_naive_QoQ_matched_to_ifoCAST{subset_str}')
+    naive_qoq_matched_table_path = os.path.join(table_folder, f'4_naive_QoQ{gva_string}_matched_to_ifoCAST{subset_str}')
     os.makedirs(naive_qoq_matched_table_path, exist_ok=True)
 
 
@@ -983,11 +1049,11 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # --------------------------------------------------------------------------------------------------
 
     ## Filepaths for error series and tables
-    ifo_qoq_matched_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifo_qoq_error_series_matched_to_ifoCAST{subset_str}')
+    ifo_qoq_matched_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifo_qoq_error_series{gva_string}_matched_to_ifoCAST{subset_str}')
     os.makedirs(ifo_qoq_matched_error_path, exist_ok=True)
 
     # Error Tables
-    ifo_qoq_matched_table_path = os.path.join(table_folder, f'4_ifo_QoQ_matched_to_ifoCAST{subset_str}')
+    ifo_qoq_matched_table_path = os.path.join(table_folder, f'4_ifo_QoQ{gva_string}_matched_to_ifoCAST{subset_str}')
     os.makedirs(ifo_qoq_matched_table_path, exist_ok=True)
 
     ## Clear
@@ -999,15 +1065,21 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
 
 
     ## Evaluation and Table Creation
-    ifo_qoq_matched_error_series_names = [f'ifo_qoq_matched_errors_first{subset_str}',
-                            f'ifo_qoq_matched_errors_latest{subset_str}',
+    ifo_qoq_matched_error_series_names = [f'ifo_qoq_matched_errors_first{subset_str}{gva_string}',
+                            f'ifo_qoq_matched_errors_latest{subset_str}{gva_string}',
                             f'ifo_qoq_matched_errors_T45{subset_str}',
                             f'ifo_qoq_matched_errors_T55{subset_str}']
 
-    ifo_qoq_matched_table_names = [f'ifo_qoq_matched_error_tables_first{subset_str}',
-                            f'ifo_qoq_matched_error_tables_latest{subset_str}',
+    ifo_qoq_matched_table_names = [f'ifo_qoq_matched_error_tables_first{subset_str}{gva_string}',
+                            f'ifo_qoq_matched_error_tables_latest{subset_str}{gva_string}',
                             f'ifo_qoq_matched_error_tables_T45{subset_str}',
                             f'ifo_qoq_matched_error_tables_T55{subset_str}']
+    
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        for df in [ifo_qoq_matched_error_series_names, ifo_qoq_matched_table_names]:
+            del df[2:]  # Keep only the first two elements
+
 
 
 
@@ -1050,10 +1122,10 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # --------------------------------------------------------------------------------------------------
 
     ## Filepaths for error series and tables
-    ifoCast_filtered_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifoCAST_error_series_matched{subset_str}')
+    ifoCast_filtered_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifoCAST_error_series{gva_string}_matched{subset_str}')
     os.makedirs(ifoCast_filtered_error_path, exist_ok=True)
 
-    ifoCAST_filtered_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations_matched{subset_str}')
+    ifoCAST_filtered_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations{gva_string}_matched{subset_str}')
     os.makedirs(ifoCAST_filtered_table_path, exist_ok=True)
 
     ## Clear
@@ -1065,15 +1137,20 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
 
 
     ## Evaluation and Table Creation
-    ifoCast_filtered_error_series_names = [f'ifoCAst_errors_filtered_first{subset_str}',
-                            f'ifoCAst_errors_filtered_latest{subset_str}',
+    ifoCast_filtered_error_series_names = [f'ifoCAst_errors_filtered_first{subset_str}{gva_string}',
+                            f'ifoCAst_errors_filtered_latest{subset_str}{gva_string}',
                             f'ifoCAst_errors_filtered_T45{subset_str}',
                             f'ifoCAst_errors_filtered_T55{subset_str}']
 
-    ifoCast_filtered_table_names = [f'ifoCAst_error_tables_filtered_first{subset_str}',
-                            f'ifoCAst_error_tables_filtered_latest{subset_str}',
+    ifoCast_filtered_table_names = [f'ifoCAst_error_tables_filtered_first{subset_str}{gva_string}',
+                            f'ifoCAst_error_tables_filtered_latest{subset_str}{gva_string}',
                             f'ifoCAst_error_tables_filtered_T45{subset_str}',
                             f'ifoCAst_error_tables_filtered_T55{subset_str}']
+    
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        for df in [ifoCast_filtered_error_series_names, ifoCast_filtered_table_names]:
+            del df[2:]  # Keep only the first two elements
 
 
 
@@ -1112,11 +1189,11 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # --------------------------------------------------------------------------------------------------
 
     ## Filepaths for error series and tables
-    ifoCast_full_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifoCAST_error_series_full{subset_str}')
+    ifoCast_full_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifoCAST_error_series{gva_string}_full{subset_str}')
     os.makedirs(ifoCast_full_error_path, exist_ok=True)
 
     # Error Tables
-    ifoCAST_full_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations_full{subset_str}')
+    ifoCAST_full_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations{gva_string}_full{subset_str}')
     os.makedirs(ifoCAST_full_table_path, exist_ok=True)
 
 
@@ -1129,15 +1206,21 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
 
 
     ## Evaluation and Table Creation
-    ifoCast_full_error_series_names = [f'ifoCAst_errors_full_first{subset_str}',
-                            f'ifoCAst_errors_full_latest{subset_str}',
+    ifoCast_full_error_series_names = [f'ifoCAst_errors_full_first{subset_str}{gva_string}',
+                            f'ifoCAst_errors_full_latest{subset_str}{gva_string}',
                             f'ifoCAst_errors_full_T45{subset_str}',
                             f'ifoCAst_errors_full_T55{subset_str}']
 
-    ifoCast_full_table_names = [f'ifoCAst_error_tables_full_first{subset_str}',
-                            f'ifoCAst_error_tables_full_latest{subset_str}',
+    ifoCast_full_table_names = [f'ifoCAst_error_tables_full_first{subset_str}{gva_string}',
+                            f'ifoCAst_error_tables_full_latest{subset_str}{gva_string}',
                             f'ifoCAst_error_tables_full_T45{subset_str}',
                             f'ifoCAst_error_tables_full_T55{subset_str}']
+    
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        for df in [ifoCast_full_error_series_names, ifoCast_full_table_names]:
+            del df[2:]  # Keep only the first two elements
+
 
 
     # Dicts to store outputs
@@ -1174,11 +1257,11 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     # --------------------------------------------------------------------------------------------------
 
     ## Filepaths for error series and tables
-    ifoCast_last_rep_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifoCAST_error_series_last_rep{subset_str}')
+    ifoCast_last_rep_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifoCAST_error_series{gva_string}_last_rep{subset_str}')
     os.makedirs(ifoCast_last_rep_error_path, exist_ok=True)
 
     # Error Tables
-    ifoCAST_last_rep_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations_last_rep{subset_str}')
+    ifoCAST_last_rep_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations{gva_string}_last_rep{subset_str}')
     os.makedirs(ifoCAST_last_rep_table_path, exist_ok=True)
 
     ## Clear
@@ -1190,16 +1273,21 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
 
 
     ## Evaluation and Table Creation
-    ifoCast_last_rep_error_series_names = [f'ifoCAst_errors_last_rep_first{subset_str}',
-                                        f'ifoCAst_errors_last_rep_latest{subset_str}',
+    ifoCast_last_rep_error_series_names = [f'ifoCAst_errors_last_rep_first{subset_str}{gva_string}',
+                                        f'ifoCAst_errors_last_rep_latest{subset_str}{gva_string}',
                                         f'ifoCAst_errors_last_rep_T45{subset_str}',
                                         f'ifoCAst_errors_last_rep_T55{subset_str}']
 
-    ifoCast_last_rep_table_names = [f'ifoCAst_error_tables_last_rep_first{subset_str}',
-                                    f'ifoCAst_error_tables_last_rep_latest{subset_str}',
+    ifoCast_last_rep_table_names = [f'ifoCAst_error_tables_last_rep_first{subset_str}{gva_string}',
+                                    f'ifoCAst_error_tables_last_rep_latest{subset_str}{gva_string}',
                                     f'ifoCAst_error_tables_last_rep_T45{subset_str}',
                                     f'ifoCAst_error_tables_last_rep_T55{subset_str}']
 
+
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        for df in [ifoCast_last_rep_error_series_names, ifoCast_last_rep_table_names]:
+            del df[2:]  # Keep only the first two elements
 
     # Dicts to store outputs
     ifoCast_last_rep_error_series_dict = {}
@@ -1273,11 +1361,15 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
 
     # Subfolder names
     subfolder_names = [
-        f'0_First_Evaluation{subset_str}',
-        f'1_Latest_Evaluation{subset_str}',
+        f'0_First_Evaluation{subset_str}{gva_string}',
+        f'1_Latest_Evaluation{subset_str}{gva_string}',
         f'1_T45_Evaluation{subset_str}',
         f'1_T55_EValuation{subset_str}'
     ]
+
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        del subfolder_names[2:]  # Keep only the first two elements
 
     # Create folders and store paths
     ifoCAST_paths = {}
@@ -1298,8 +1390,11 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
 
     ## Iterators for dynamic result naming
 
-    eval_horizons = ['first', 'latest', 'T45', 'T55']
-    eval_prefixes = ['qoq_first_eval', 'qoq_latest_eval', 'T45_eval', 'T55_eval']
+    eval_horizons = [f'first', f'latest', 'T45', 'T55']
+    
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        del eval_horizons[2:]  # Keep only the first two elements
 
 
 
@@ -1320,7 +1415,11 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     ## Loop over metrics and Eval_horizons
 
     # Keys for dynamic naming
-    eval_horizon_keys = ['first', 'latest', 'T45', 'T55']
+    eval_horizon_keys = [f'first', f'latest', 'T45', 'T55']
+
+    # Exclude T45 and T55 for GVA
+    if not gdp_mode:
+        del eval_horizon_keys[2:]  # Keep only the first two elements
 
     # Store Metrics for plotting
     metrics = ['ME', 'MAE', 'MSE', 'RMSE', 'SE']
@@ -1343,7 +1442,8 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
                 ifo_table    = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}{subset_str}')
                 
                 if ifoCAST_table is None or ifo_table is None:
-                    print(f"\n WARNING: {horizon} - missing table. This shouldnt happen \n")
+                    if gdp_mode:
+                        print(f"\n WARNING: {horizon} - missing table. This shouldnt happen \n")
                     continue
 
                 # Call plotting function
@@ -1355,7 +1455,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
                     scale_by_n=False,
                     show=False,
                     save_path=save_path,
-                    save_name=f'0_ifo_ifoCAST_filterd_Quarterly_{metric}_{horizon}_eval.png'
+                    save_name=f'0_ifo_ifoCAST_filterd_Quarterly_{metric}_{horizon}_eval{gva_string}.png'
                 )
 
 
@@ -1378,7 +1478,8 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
             ifo_table    = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}{subset_str}')
             
             if ifoCAST_table is None or ifo_table is None:
-                print(f"\n WARNING: {horizon} - missing table. This shouldnt happen \n")
+                if gdp_mode:
+                    print(f"\n WARNING: {horizon} - missing table. This shouldnt happen \n")
                 continue
 
             # Call plotting function
@@ -1390,7 +1491,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
                 scale_by_n=False,
                 show=False,
                 save_path=save_path,
-                save_name=f'1_ifo_ifoCAST_full_Quarterly_{metric}_{horizon}_eval.png'
+                save_name=f'1_ifo_ifoCAST_full_Quarterly_{metric}_{horizon}_eval{gva_string}.png'
             )
 
 
@@ -1407,12 +1508,12 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
             save_path = ifoCAST_paths['barplot'][foldername]
 
             # Access the relevant table entries
-            ifoCAST_table = ifoCast_last_rep_error_table_dict.get(f'ifoCAst_error_tables_last_rep_{horizon}{subset_str}')
+            ifoCAST_table = ifoCast_last_rep_error_table_dict.get(f'ifoCAst_error_tables_last_rep_{horizon}{subset_str}{gva_string}')
             # Rename the Qminus1 col to Q0 for consistency of the plotter function
             ifoCAST_table.rename(index={"Qminus1": "Q0"}, inplace=True)
             ifoCAST_table = {"ifoCAST": ifoCAST_table}  # plot function expects a dict
 
-            ifo_table = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}{subset_str}')
+            ifo_table = ifo_qoq_matched_error_table_dict.get(f'ifo_qoq_matched_error_tables_{horizon}{subset_str}{gva_string}')
 
             if ifoCAST_table is None or ifo_table is None:
                 print(f"\n WARNING: {horizon} - missing table. \n")
@@ -1427,7 +1528,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
                 scale_by_n=False,
                 show=False,
                 save_path=save_path,
-                save_name=f'0_ifo_ifoCAST_lastRep_Quarterly_{metric}_{horizon}_eval.png'
+                save_name=f'0_ifo_ifoCAST_lastRep_Quarterly_{metric}_{horizon}_eval{gva_string}.png'
             )
 
 
@@ -1473,7 +1574,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
             title=f"ifoCAST_filtered_{horizon.capitalize()}",
             show=False,
             save_path=save_path,
-            save_name=f"0_ifoCAST_filtered_{horizon}_errors"
+            save_name=f"0_ifoCAST_filtered_{horizon}_errors{gva_string}"
         )
 
 
@@ -1499,7 +1600,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
             title=f"ifoCAST_full_{horizon.capitalize()}",
             show=False,
             save_path=save_path,
-            save_name=f"1_ifoCAST_full_{horizon}_errors"
+            save_name=f"1_ifoCAST_full_{horizon}_errors{gva_string}"
         )
 
 
@@ -1534,7 +1635,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
             title=f"ifoCAST Last Release Errors against {horizon.capitalize()}",
             show=False,
             save_path=save_path,
-            save_name=f"1_ifoCAST_lastRep_{horizon}_errors"
+            save_name=f"1_ifoCAST_lastRep_{horizon}_errors{gva_string}"
         )
 
 
@@ -1621,7 +1722,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
 
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
-#                                        RUN EVALUATIONS                                           #
+#                                     RUN EVALUATIONS - GDP                                        #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
@@ -1631,7 +1732,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
 #                                    Full ifoCAST since Q1-2020
 # ==================================================================================================
 
-print("\nRunning ifoCAST Evaluation Pipeline on full ifoCAST data since Q1-2020 ... \n")
+print("\nRunning ifoCAST GDP Evaluation Pipeline on full ifoCAST data since Q1-2020 ... \n")
 ifocast_eval_pipeline(ifoCAst_Qm1_Q0_Q1_filtered, ifoCAst_Qm1_Q0_Q1_full, ifocast_last_values)
 
 
@@ -1671,7 +1772,7 @@ def subset_ifocast(df: pd.DataFrame, cutoff_date) -> pd.DataFrame:
 # --------------------------------------------------------------------------------------------------
 
 if settings.run_ifocast_2021_subset:
-    print("\nRunning ifoCAST Evaluation Pipeline on subseted ifoCAST data since Q1-2021 ... \n")
+    print("\nRunning ifoCAST GDP Evaluation Pipeline on subseted ifoCAST data since Q1-2021 ... \n")
 
     ## Filter ifoCasts
     ifocast_filtered_2021 = subset_ifocast(ifoCAst_Qm1_Q0_Q1_filtered, '2021-01-01')
@@ -1691,7 +1792,7 @@ if settings.run_ifocast_2021_subset:
 # --------------------------------------------------------------------------------------------------
 
 if settings.run_ifocast_2022_subset:
-    print("\nRunning ifoCAST Evaluation Pipeline on subseted ifoCAST data since Q1-2022 ... \n")
+    print("\nRunning ifoCAST GDP Evaluation Pipeline on subseted ifoCAST data since Q1-2022 ... \n")
 
     ## Filter ifoCasts
     ifocast_filtered_2022 = subset_ifocast(ifoCAst_Qm1_Q0_Q1_filtered, '2022-01-01')
@@ -1700,6 +1801,63 @@ if settings.run_ifocast_2022_subset:
 
     ## Run Eval pipeline
     ifocast_eval_pipeline(ifocast_filtered_2022, ifocast_full_2022, ifocast_last_2022, subset_str='_since_2022')
+
+
+
+
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                     RUN EVALUATIONS - GVA                                        #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+if settings.run_gva_evaluation:
+
+    # ==================================================================================================
+    #                                    Full ifoCAST since Q1-2020
+    # ==================================================================================================
+
+    print("\nRunning ifoCAST GVA-Evaluation Pipeline on full ifoCAST data since Q1-2020 ... \n")
+    ifocast_eval_pipeline(ifoCAst_Qm1_Q0_Q1_filtered, ifoCAst_Qm1_Q0_Q1_full, ifocast_last_values, 
+                          gdp_mode=False)
+
+
+    # ==================================================================================================
+    #                                       Subsetted ifoCAST
+    # ==================================================================================================
+
+    # --------------------------------------------------------------------------------------------------
+    #                                        since Q1-2021
+    # --------------------------------------------------------------------------------------------------
+
+    if settings.run_ifocast_2021_subset:
+        print("\nRunning ifoCAST GVA-Evaluation Pipeline on subseted ifoCAST data since Q1-2021 ... \n")
+
+        ## Run Eval pipeline
+        ifocast_eval_pipeline(ifocast_filtered_2021, ifocast_full_2021, ifocast_last_2021, subset_str='_since_2021', 
+                              gdp_mode=False)
+
+
+    # --------------------------------------------------------------------------------------------------
+    #                                        since Q1-2022
+    # --------------------------------------------------------------------------------------------------
+
+    if settings.run_ifocast_2022_subset:
+        print("\nRunning ifoCAST GVA-Evaluation Pipeline on subseted ifoCAST data since Q1-2022 ... \n")
+
+        ## Run Eval pipeline
+        ifocast_eval_pipeline(ifocast_filtered_2022, ifocast_full_2022, ifocast_last_2022, subset_str='_since_2022', 
+                              gdp_mode=False)
+
+
+
 
 
 
