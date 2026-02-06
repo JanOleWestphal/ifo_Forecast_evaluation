@@ -22,12 +22,14 @@ To do this, select the series to be evaluated below and run scripts 1,2,3,4
 """
 
 # Select which part of the ifo forecast you want to evaluate
-evaluation_series = 'GDP'
+evaluation_series = ['GDP']
 
-# Options:
+# ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
+
+# List of Strings; Options:
 # 'GDP' -> to run GVA as well, go below to set run_gva_evaluation = True 
 # 'PRIVCON' (private consumption), 'PUBCON' (public consumption), 'CONSTR' (construction), 
-# 'OPA' (other product assetes), 'INVINV' (inventories), 'DOMUSE' (domestic use),
+# 'OPA' (other product assetes), 'INVINV' (investment inventories), 'DOMUSE' (domestic use),
 # 'TRDBAL' (trade balance), 'EXPORT', 'IMPORT'
 
 
