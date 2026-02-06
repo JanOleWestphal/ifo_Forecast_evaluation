@@ -119,9 +119,17 @@ os.makedirs(ifo_qoq_output_dir, exist_ok=True)
 # Component-level data
 # --------------------------------------------------------------------------------------------------
 
+## Component output directory
+output_dir_ts_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_component_series')
+os.makedirs(output_dir_ts_components, exist_ok=True)
+
+## Evaluation series directory
+output_dir_eval_components = os.path.join(wd, '0_0_Data', f'2_Processed_Data', f'2_component_Evaluation_series')
+os.makedirs(output_dir_eval_components, exist_ok=True)
+
 ## Directory for component time series
-component_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '0_gdp_component_series')
-os.makedirs(component_output_dir, exist_ok=True)
+component_forecast_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_gdp_component_forecast')
+os.makedirs(component_forecast_output_dir, exist_ok=True)
 
 
 
@@ -344,6 +352,34 @@ def process_realtime_data(rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GD
 # -------------------------------------------------------------------------------------------------#
 
 
+## HELPER: 
+
+# Define a function which selects the first instance of a new GDP release
+def build_first_release_series(df_input):
+    """
+    Build a DataFrame containing the last (most recent) value from each column of df_input,
+    along with its corresponding index. If the last value's index is the same as the previous,
+    skip it to avoid duplicates.
+    """
+    last_indices = []
+    last_values = []
+    prev_index = None
+
+    for col in df_input.columns:
+        # Drop NaNs to get the last valid value
+        col_data = df_input[col].dropna()
+        if not col_data.empty:
+            idx = col_data.index[-1]
+            if idx != prev_index:
+                last_indices.append(idx)
+                last_values.append(col_data.iloc[-1])
+                prev_index = idx
+
+    result_df = pd.DataFrame({'value': last_values}, index=last_indices)
+    result_df.index.name = 'date'
+    return result_df
+
+
 
 def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combined, output_dir_df, data_name):
 
@@ -351,37 +387,10 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     # First Release Time Series
     # --------------------------------------------------------------------------------------------------
 
-    # Define a function which selects the first instance of a new GDP release
-    def build_first_release_series(df_input):
-        """
-        Build a DataFrame containing the last (most recent) value from each column of df_input,
-        along with its corresponding index. If the last value's index is the same as the previous,
-        skip it to avoid duplicates.
-        """
-        last_indices = []
-        last_values = []
-        prev_index = None
-
-        for col in df_input.columns:
-            # Drop NaNs to get the last valid value
-            col_data = df_input[col].dropna()
-            if not col_data.empty:
-                idx = col_data.index[-1]
-                if idx != prev_index:
-                    last_indices.append(idx)
-                    last_values.append(col_data.iloc[-1])
-                    prev_index = idx
-
-        result_df = pd.DataFrame({'value': last_values}, index=last_indices)
-        result_df.index.name = 'date'
-        return result_df
-
-
-    # Call this function on absolute, qoq and yoy
+    # Call this first_release on absolute, qoq and yoy
     first_release_df = build_first_release_series(df_combined)
     first_release_qoq_df = build_first_release_series(df_qoq_combined)
     first_release_yoy_df = build_first_release_series(df_yoy_combined)
-
 
 
 
@@ -826,6 +835,204 @@ if settings.run_gva_evaluation:
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
+""" 
+Rescale the component-level data from excel file to match Bundesbank real-time data format, reapply 
+the same processing pipeline, store results
+
+-> output_dir_ts_components, component_forecast_output_dir
+
+NOTE: component-level date is already in qoq-format
+"""
+
+
+
+
+# =================================================================================================#
+#                           SIMULATED QOQ and YOY Realtime Data                                    #
+# =================================================================================================#
+
+
+component_input_dir = os.path.join(wd, "0_0_Data", "2_Processed_Data", "3_gdp_component_forecast")
+
+
+# --------------------------------------------------------------------------------------------------
+# Helpers
+# --------------------------------------------------------------------------------------------------
+
+def third_token_from_filename(path: str) -> str:
+    """
+    Expect filenames like: ifo_qoq_CONSTR_forecasts.xlsx
+    Return: CONSTR (3rd underscore-separated token).
+    """
+    base = os.path.splitext(os.path.basename(path))[0]
+    parts = base.split("_")
+    if len(parts) < 3:
+        raise ValueError(f"Unexpected filename format (need at least 3 '_' tokens): {base}")
+    return parts[2]
+
+
+
+def fill_rowwise_left_on_na_after_start(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    For each row:
+      - Find first non-NA (start).
+      - For all subsequent columns moving right:
+          if cell is NA -> replace with value from immediate left column (same row).
+          else keep as is.
+    """
+    out = df.copy()
+
+    for idx in out.index:
+        row = out.loc[idx]
+        vals = row.to_numpy()
+
+        # first non-NA
+        start_pos = None
+        for j, v in enumerate(vals):
+            if pd.notna(v):
+                start_pos = j
+                break
+
+        if start_pos is None:
+            continue
+
+        for j in range(start_pos + 1, len(vals)):
+            if pd.isna(vals[j]):
+                vals[j] = vals[j - 1]
+
+        out.loc[idx] = vals
+
+    return out
+
+
+
+def build_first_release_series_rowwise(df_input: pd.DataFrame) -> pd.DataFrame:
+    if df_input is None or df_input.empty:
+        out = pd.DataFrame({"value": []})
+        out.index.name = "date"
+        return out
+
+    df = df_input.copy()
+
+    # Ensure chronological order
+    try:
+        df = df.reindex(sorted(df.columns), axis=1)
+    except Exception:
+        pass
+    try:
+        df = df.sort_index()
+    except Exception:
+        pass
+
+    cols = list(df.columns)
+    if len(cols) == 0:
+        out = pd.DataFrame({"value": []})
+        out.index.name = "date"
+        return out
+
+    # Use np.nan-compatible dtype
+    out = pd.Series(np.nan, index=df.index, dtype="float64")
+
+    # Column 0: take all non-NAs
+    m0 = df[cols[0]].notna()
+    out.loc[m0] = pd.to_numeric(df.loc[m0, cols[0]], errors="coerce").to_numpy()
+
+    # Next columns: take only the "newly released" tail
+    for j in range(1, len(cols)):
+        prev_col = cols[j - 1]
+        cur_col = cols[j]
+
+        prev = df[prev_col]
+        na_mask = prev.isna()
+        if not na_mask.any():
+            continue
+
+        # first date where prev is NA (index assumed sorted)
+        start_pos = int(np.argmax(na_mask.to_numpy()))
+        start_date = df.index[start_pos]
+
+        cur_tail = df.loc[df.index >= start_date, cur_col]
+        take_mask = cur_tail.notna()
+        if take_mask.any():
+            out.loc[cur_tail.index[take_mask]] = pd.to_numeric(cur_tail.loc[take_mask], errors="coerce").to_numpy()
+
+    result_df = out.dropna().to_frame("value")
+    result_df.index.name = "date"
+    return result_df
+
+
+# --------------------------------------------------------------------------------------------------
+# Main: process all Excel files in directory, all sheets
+# --------------------------------------------------------------------------------------------------
+excel_files = [f for f in os.listdir(component_input_dir) if f.lower().endswith(".xlsx")]
+
+for f in excel_files:
+    in_path = os.path.join(component_input_dir, f)
+    token = third_token_from_filename(in_path)
+
+    xls = pd.ExcelFile(in_path)
+
+    # QoQ RT output
+    out_path_qoq = os.path.join(output_dir_ts_components, f"qoq_rt_{token}_data.xlsx")
+    # YoY RT output
+    out_path_yoy = os.path.join(output_dir_ts_components, f"yoy_rt_{token}_data.xlsx")
+
+    # Evaluation outputs (first-release series)
+    os.makedirs(output_dir_eval_components, exist_ok=True)
+    out_path_eval_qoq = os.path.join(output_dir_eval_components, f"first_release_qoq_{token}.xlsx")
+    out_path_eval_yoy = os.path.join(output_dir_eval_components, f"first_release_yoy_{token}.xlsx")
+
+    # Collect combined data across sheets (one df per workbook type)
+    qoq_dfs = {}
+    yoy_dfs = {}
+
+    # --- read, fill, compute yoy; store per sheet for writing + for combined ---
+    for sheet in xls.sheet_names:
+        df = pd.read_excel(in_path, sheet_name=sheet)
+
+        if df.shape[1] >= 2:
+            df.set_index(df.columns[0], inplace=True)
+
+        df_filled = fill_rowwise_left_on_na_after_start(df)
+        df_yoy = get_yoy(df_filled)
+
+        qoq_dfs[sheet] = df_filled
+        yoy_dfs[sheet] = df_yoy
+
+    # --- write QoQ workbook ---
+    with pd.ExcelWriter(out_path_qoq, engine="openpyxl") as writer_qoq:
+        for sheet, df_filled in qoq_dfs.items():
+            df_filled.to_excel(writer_qoq, sheet_name=sheet, index=True)
+
+    # --- write YoY workbook ---
+    with pd.ExcelWriter(out_path_yoy, engine="openpyxl") as writer_yoy:
+        for sheet, df_yoy in yoy_dfs.items():
+            df_yoy.to_excel(writer_yoy, sheet_name=sheet, index=True)
+
+    # --- build "combined" dfs for evaluation series ---
+    # If there is only one sheet, combined == that sheet.
+    # If multiple sheets, stack them with a MultiIndex (sheet, date) to avoid collisions.
+    if len(qoq_dfs) == 1:
+        df_qoq_combined = next(iter(qoq_dfs.values()))
+        df_yoy_combined = next(iter(yoy_dfs.values()))
+    else:
+        df_qoq_combined = pd.concat(qoq_dfs, names=["sheet", "date"])
+        df_yoy_combined = pd.concat(yoy_dfs, names=["sheet", "date"])
+
+    # --- evaluation series (first-release) ---
+    first_release_qoq_df = build_first_release_series_rowwise(df_qoq_combined)
+    first_release_yoy_df = build_first_release_series_rowwise(df_yoy_combined)
+
+    # --- save evaluation series ---
+    first_release_qoq_df.to_excel(out_path_eval_qoq, index=True)
+    first_release_yoy_df.to_excel(out_path_eval_yoy, index=True)
+
+
+
+
+
+
+
 
 
 
@@ -963,10 +1170,10 @@ for sheet in xls.sheet_names:
     )
 
     out_name = f"ifo_qoq_{_safe_sheet_filename(sheet)}_forecasts.xlsx"
-    ifo_qoq_output_path = os.path.join(component_output_dir, out_name)
+    ifo_qoq_output_path = os.path.join(component_forecast_output_dir, out_name)
 
     process_ifo_qoq_forecasts(ifo_qoq_raw, ifo_qoq_output_path)
-    print(f"Saved: {ifo_qoq_output_path}")
+    #print(f"Saved: {ifo_qoq_output_path}")
 
 
 
