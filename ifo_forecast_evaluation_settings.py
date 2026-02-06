@@ -22,15 +22,16 @@ To do this, select the series to be evaluated below and run scripts 1,2,3,4
 """
 
 # Select which part of the ifo forecast you want to evaluate
-evaluation_series = ['GDP']
+evaluate_forecast_components = True # True or False
 
-# ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
 
-# List of Strings; Options:
+# CODEBOOK:
+"""
 # 'GDP' -> to run GVA as well, go below to set run_gva_evaluation = True 
 # 'PRIVCON' (private consumption), 'PUBCON' (public consumption), 'CONSTR' (construction), 
 # 'OPA' (other product assetes), 'INVINV' (investment inventories), 'DOMUSE' (domestic use),
 # 'TRDBAL' (trade balance), 'EXPORT', 'IMPORT'
+"""
 
 
 
@@ -50,8 +51,8 @@ previous iterations of earlier modules is what you want to analyze
 # 1.:  Decide whether or not to run automatic package installation
 install_packages = False  # True or False
 
-# 1_1.: Decide whether to run the GDP-Component preprocessin pipeline
-run_component_preprocessing = True  # True or False; only needed if evaluation_series != 'GDP'
+# 1_1.: Decide whether to run the GDP-Component preprocessing pipeline
+run_component_preprocessing = True  # True or False; needed when running the full component evaluation
 
 # 2.: Decide whether you want to re-run the data processing
 run_data_processing = True  # True or False
