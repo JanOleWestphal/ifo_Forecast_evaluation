@@ -140,6 +140,18 @@ if settings.install_packages:
     execute_script('1_Install_Packages.py')
 
 
+
+# ==================================================================================================
+# GDP-COMPONENT PROCESSING
+# ==================================================================================================
+if settings.run_component_preprocessing:
+    execute_script('2_1_Component_Preprocessing.py')
+else: 
+    print("Warning: No GDP component preprocessing, might use depricated component-data.\n" \
+    "Set run_component_preprocessing = True for real-time data")
+
+
+
 # ==================================================================================================
 # DATA PROCESSING
 # ==================================================================================================

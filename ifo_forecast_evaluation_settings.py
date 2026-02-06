@@ -11,6 +11,31 @@
 
 
 
+
+# ==================================================================================================
+#                          SYSTEM SETTINGS: Which Time Series should be evaluated?
+# ==================================================================================================
+
+"""
+The original project was to evaluate the ifo GDP forecasts, but its component's may also be evaluated.
+To do this, select the series to be evaluated below and run scripts 1,2,3,4
+"""
+
+# Select which part of the ifo forecast you want to evaluate
+evaluation_series = 'GDP'
+
+# Options:
+# 'GDP' -> to run GVA as well, go below to set run_gva_evaluation = True 
+# 'PRIVCON' (private consumption), 'PUBCON' (public consumption), 'CONSTR' (construction), 
+# 'OPA' (other product assetes), 'INVINV' (inventories), 'DOMUSE' (domestic use),
+# 'TRDBAL' (trade balance), 'EXPORT', 'IMPORT'
+
+
+
+
+
+
+
 # ==================================================================================================
 #                          SYSTEM SETTINGS: Which Scripts should be run?
 # ==================================================================================================
@@ -23,7 +48,10 @@ previous iterations of earlier modules is what you want to analyze
 # 1.:  Decide whether or not to run automatic package installation
 install_packages = False  # True or False
 
-# 2.: Decide whther you want to re-run the data processing
+# 1_1.: Decide whether to run the GDP-Component preprocessin pipeline
+run_component_preprocessing = True  # True or False; only needed if evaluation_series != 'GDP'
+
+# 2.: Decide whether you want to re-run the data processing
 run_data_processing = True  # True or False
 
 # 3.: Decide whether to re-run the Naive Forecaster
@@ -47,8 +75,9 @@ macro_clear = True  # True or False
 
 
 
+
 # ==================================================================================================
-#                                         DATA SETTINGS
+#                                         DATA SETTINGS - GDP and GVA
 # ==================================================================================================
 
 # Decide wether to use Real time (True) or a local version of the Bundesbank data (False)
