@@ -844,7 +844,7 @@ if settings.run_gva_evaluation:
 # ==================================================================================================
 
 ## Filepath
-ifo_qoq_input_path = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '1_ifo_quarterly')
+ifo_qoq_input_path = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '1_ifo_quarterly_gdp')
 
 # --------------------------------------------------------------------------------------------------
 # Load in the excel dynamically
