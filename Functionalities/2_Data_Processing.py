@@ -47,6 +47,7 @@ import importlib
 import subprocess
 import sys
 import os
+import re
 from datetime import datetime, date
 
 
@@ -93,9 +94,13 @@ import ifo_forecast_evaluation_settings as settings
 
 
 # ==================================================================================================
-#                                DEFINE OUTOUT DIRECTORIES
+#                                DEFINE OUTPUT DIRECTORIES
 # ==================================================================================================
 
+
+# --------------------------------------------------------------------------------------------------
+# GDP and GVA
+# --------------------------------------------------------------------------------------------------
 
 ## GDP
 output_dir_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_GDP_series')
@@ -110,6 +115,13 @@ ifo_qoq_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq
 os.makedirs(ifo_qoq_output_dir, exist_ok=True)
 
 
+# --------------------------------------------------------------------------------------------------
+# Component-level data
+# --------------------------------------------------------------------------------------------------
+
+## Directory for component time series
+component_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '0_gdp_component_series')
+os.makedirs(component_output_dir, exist_ok=True)
 
 
 
@@ -764,16 +776,6 @@ build_store_evaluation_timeseries(df_combined=gdp_combined,
 
 
 
-
-
-
-
-
-
-
-
-
-
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                 DATA PROCESSING - Bruttowertschöpfung (gross value added)                        #
@@ -818,6 +820,16 @@ if settings.run_gva_evaluation:
 
 
 
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                              SIMULATE COMPONENT-LEVEL RT DATA                                    #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+
+
+
+
 
 
 
@@ -840,7 +852,39 @@ if settings.run_gva_evaluation:
 
 
 # ==================================================================================================
-#  Load ifo qoq Forecasts
+#  PROCESSING PIPELINE
+# ==================================================================================================
+
+def process_ifo_qoq_forecasts(ifo_qoq_raw, ifo_qoq_output_path):
+
+    ## Set first column as index and drop empty columns
+    ifo_qoq_raw.set_index(ifo_qoq_raw.columns[0], inplace=True)
+    ifo_qoq_raw.dropna(axis=1, how='all', inplace=True)
+
+    #show(ifo_qoq_raw)
+
+    # --------------------------------------------------------------------------------------------------
+    # Drop all values which are not predictions
+    # --------------------------------------------------------------------------------------------------
+
+    # Loop through columns and set entries to NaN if row date is >= 2 months older than column date
+    for col in ifo_qoq_raw.columns:
+        too_old = ifo_qoq_raw.index <= (col - pd.DateOffset(months=2))
+        ifo_qoq_raw.loc[too_old, col] = pd.NA
+
+    # Drop rows that are all NA
+    ifo_qoq = ifo_qoq_raw.dropna(how='all')
+
+    # show(ifo_qoq)
+
+    ## Save files
+    ifo_qoq.to_excel(ifo_qoq_output_path, index=True)   
+
+
+
+
+# ==================================================================================================
+#  GDP FORECASTS
 # ==================================================================================================
 
 ## Filepath
@@ -872,49 +916,57 @@ ifo_qoq_raw = pd.read_excel(
 print(f"Loaded Excel file: {excel_files[0]}")
 
 
-
-# ==================================================================================================
-#  Rescale, drop all non-prediction values
-# ==================================================================================================
-
-## Set first column as index and drop empty columns
-ifo_qoq_raw.set_index(ifo_qoq_raw.columns[0], inplace=True)
-ifo_qoq_raw.dropna(axis=1, how='all', inplace=True)
-
-#show(ifo_qoq_raw)
-
 # --------------------------------------------------------------------------------------------------
-# Drop all values which are not predictions
+# Process and save
 # --------------------------------------------------------------------------------------------------
 
-# Loop through columns and set entries to NaN if row date is >= 2 months older than column date
-for col in ifo_qoq_raw.columns:
-    too_old = ifo_qoq_raw.index <= (col - pd.DateOffset(months=2))
-    ifo_qoq_raw.loc[too_old, col] = pd.NA
-
-# Drop rows that are all NA
-ifo_qoq = ifo_qoq_raw.dropna(how='all')
-
-# show(ifo_qoq)
-
-
-
-# ==================================================================================================
-#  Store Processed values
-# ==================================================================================================
-
-## Define file paths
 ifo_qoq_output_path = os.path.join(ifo_qoq_output_dir, 'ifo_qoq_forecasts.xlsx')
-#os.makedirs(ifo_qoq_output_path, exist_ok=True)
-
-
-# Save files
-ifo_qoq.to_excel(ifo_qoq_output_path, index=True)   
+process_ifo_qoq_forecasts(ifo_qoq_raw, ifo_qoq_output_path)
 
 
 
 
 
+# ==================================================================================================
+#  COMPONENT-LEVEL FORECASTS
+# ==================================================================================================
+
+def _safe_sheet_filename(sheet_name: str) -> str:
+    # keep filenames portable
+    s = re.sub(r"\s+", "_", sheet_name.strip())
+    s = re.sub(r"[^A-Za-z0-9_\-]", "", s)
+    return s or "sheet"
+
+# --------------------------------------------------------------------------------------------------
+#  COMPONENT-LEVEL FORECASTS
+# --------------------------------------------------------------------------------------------------
+
+ifo_components_dir = os.path.join(
+    wd, "0_0_Data", "0_Forecast_Inputs", "1_ifo_quarterly_components"
+)
+ifo_components_path = os.path.join(ifo_components_dir, "ifo_BIP_Komponenten.xlsx")
+
+if not os.path.exists(ifo_components_path):
+    raise FileNotFoundError(f"Missing input file: {ifo_components_path}")
+
+# Discover sheet names first
+xls = pd.ExcelFile(ifo_components_path)
+
+for sheet in xls.sheet_names:
+    # Load each sheet with the same layout assumption as before:
+    # first two rows are meta, row 3 is header (publication dates), col1 is target date
+    ifo_qoq_raw = pd.read_excel(
+        ifo_components_path,
+        sheet_name=sheet,
+        skiprows=2,
+        header=0,
+    )
+
+    out_name = f"ifo_qoq_{_safe_sheet_filename(sheet)}_forecasts.xlsx"
+    ifo_qoq_output_path = os.path.join(component_output_dir, out_name)
+
+    process_ifo_qoq_forecasts(ifo_qoq_raw, ifo_qoq_output_path)
+    print(f"Saved: {ifo_qoq_output_path}")
 
 
 
