@@ -737,16 +737,77 @@ def save_dt_indexed_results(df_combined_qoq, df_combined_yoy,
 # Build and store YoY forecast Excels
 # --------------------------------------------------------------------------------------------------
 
+def get_yoy_forecast_series(
+    df_combined_yoy,
+    summer=False,
+    winter=False,
+    gdp_mode=True,
+    file_path_forecasts_yoy=file_path_forecasts_yoy,
+    file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+    component_name: str = "",
+):
+    df_combined_yoy = df_combined_yoy.copy()
+
+    # ensure datetime index
+    df_combined_yoy.index = pd.to_datetime(df_combined_yoy.index, errors="coerce")
+    df_combined_yoy = df_combined_yoy[df_combined_yoy.index.notna()]
+
+    # ensure datetime columns (publication dates)
+    df_combined_yoy.columns = pd.to_datetime(df_combined_yoy.columns, errors="coerce")
+
+    # --- CRITICAL: make index UNIQUE by aggregating to annual ---
+    # Choose ONE value per year. "last" corresponds to end-of-year / latest quarter available that year.
+    df_y = df_combined_yoy.groupby(df_combined_yoy.index.year).last()
+
+    records = []
+    for col in df_y.columns:
+        date = pd.to_datetime(col)
+        yr = date.year
+        y1 = yr + 1
+
+        rec = {"date_of_forecast": date,
+               "y_0": yr,
+               "y_0_forecast": df_y.at[yr, col] if yr in df_y.index else pd.NA,
+               "y_1": y1,
+               "y_1_forecast": df_y.at[y1, col] if y1 in df_y.index else pd.NA}
+
+        records.append(rec)
+
+    yoy_forecast_series = pd.DataFrame.from_records(records).set_index("date_of_forecast")
+    yoy_forecast_series.index = pd.to_datetime(yoy_forecast_series.index)
+
+    # seasonal filtering (unchanged)
+    if summer:
+        yoy_forecast_series = yoy_forecast_series[yoy_forecast_series.index.month.isin([4, 5, 6])]
+    elif winter:
+        yoy_forecast_series = yoy_forecast_series[yoy_forecast_series.index.month.isin([10, 11, 12])]
+
+    seasonal_suffix = "_full"
+    if summer:
+        seasonal_suffix = "_summer"
+    elif winter:
+        seasonal_suffix = "_winter"
+
+    if model in ["AVERAGE", "GLIDING_AVERAGE"]:
+        filename_yoy_forecast_series = (
+            f"forecast_series_{component_name}yoy_{model}_{average_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx"
+        )
+    elif model == "AR":
+        filename_yoy_forecast_series = (
+            f"forecast_series_{component_name}yoy_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx"
+        )
+
+    yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy, filename_yoy_forecast_series), index=True)
+    if gdp_mode:
+        yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy_2, filename_yoy_forecast_series), index=True)
+
+    return yoy_forecast_series
+
+
+"""
 def get_yoy_forecast_series(df_combined_yoy, summer = False, winter = False, gdp_mode=True,
                             file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
                             component_name: str = ""):
-
-    """
-    Creates a df which matches the structure of the ifo and consensus forecast inputs and saves it 
-    as an excel to <file_path_forecasts_yoy>
-
-
-    """
 
     df_combined_yoy = df_combined_yoy.copy()
 
@@ -807,7 +868,7 @@ def get_yoy_forecast_series(df_combined_yoy, summer = False, winter = False, gdp
         yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy_2, filename_yoy_forecast_series), index=True)
 
     return yoy_forecast_series
-
+"""
 
 
 
