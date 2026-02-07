@@ -547,7 +547,8 @@ def AR_diagnostics(col, results, AR_order):
 # GET QUARTERLY FORECASTS (same structure as the ifo quarterly forecasts)
 # ==================================================================================================
 
-def retrieve_qoq_predictions(qoq_forecast_df, file_path_forecasts_qoq=file_path_dt_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
+def retrieve_qoq_predictions(qoq_forecast_df, model, file_path_forecasts_qoq=file_path_dt_qoq, 
+                             file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
                              gdp_mode=True, component_name: str = ""):
     """
     I: Set the index equal to colnames, shift every col such that the col name matches the row name on
@@ -705,7 +706,7 @@ def join_forecaster_output(df_qoq, qoq_forecast_df):
 # Save prediction time series with datetime indexing
 # --------------------------------------------------------------------------------------------------
 
-def save_dt_indexed_results(df_combined_qoq, df_combined_yoy, 
+def save_dt_indexed_results(df_combined_qoq, df_combined_yoy, model,
                             file_path_dt_qoq= file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, component_name: str = ""):
 
 
@@ -713,7 +714,7 @@ def save_dt_indexed_results(df_combined_qoq, df_combined_yoy,
     if model in ['AVERAGE', 'GLIDING_AVERAGE']:
 
         # Full Data qoq
-        filename_df_combined_qoq = f'dt_full_{component_name}qoq{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+        filename_df_combined_qoq = f'dt_full_{component_name}qoq_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
 
         # Full Data yoy
         filename_df_combined_yoy = f'dt_full_{component_name}yoy_{model}_{average_horizon}_{forecast_horizon-1}.xlsx' 
@@ -739,6 +740,7 @@ def save_dt_indexed_results(df_combined_qoq, df_combined_yoy,
 
 def get_yoy_forecast_series(
     df_combined_yoy,
+    model,
     summer=False,
     winter=False,
     gdp_mode=True,
@@ -876,7 +878,7 @@ def get_yoy_forecast_series(df_combined_yoy, summer = False, winter = False, gdp
 # OLD REFERENCE OUTPUT: Save prediction time series as excel for evaluation 
 # --------------------------------------------------------------------------------------------------
 
-def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, AR_summary=None, 
+def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, model, AR_summary=None, 
                          folder_path=folder_path):
 
     # ==============================================================================================
@@ -1010,8 +1012,8 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
-def process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, 
-                             filepath_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
+def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df, AR_summary, model,
+                             file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
                              gdp_mode=True, component_name: str = ""):
 
             ## Process
@@ -1020,21 +1022,24 @@ def process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_
             ## Store Output
 
             # qoq Time Series
-            retrieve_qoq_predictions(qoq_forecast_df, gdp_mode=gdp_mode, component_name=component_name)
+            retrieve_qoq_predictions(qoq_forecast_df, model=model,file_path_forecasts_qoq=file_path_dt_qoq, 
+                                     file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
+                                     gdp_mode=gdp_mode, component_name=component_name)
+
 
             # DateTime indexed results
-            save_dt_indexed_results(df_combined_qoq, df_combined_yoy, 
-                                    file_path_dt_yoy=file_path_dt_yoy, file_path_dt_qoq=filepath_dt_qoq,
+            save_dt_indexed_results(df_combined_qoq, df_combined_yoy, model=model,
+                                    file_path_dt_yoy=file_path_dt_yoy, file_path_dt_qoq=file_path_dt_qoq,
                                     component_name=component_name)
 
             # YoY Forecasts
-            yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy, gdp_mode=gdp_mode, component_name=component_name)
-            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True, gdp_mode=gdp_mode, component_name=component_name)
-            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True, gdp_mode=gdp_mode, component_name=component_name)
+            yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy, model=model, gdp_mode=gdp_mode, component_name=component_name)
+            yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, summer=True, model=model, gdp_mode=gdp_mode, component_name=component_name)
+            yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, winter=True, model=model, gdp_mode=gdp_mode, component_name=component_name)
 
             # Reformated combined time series
             if gdp_mode:
-                save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, AR_summary)
+                save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, model=model, AR_summary=AR_summary)
 
 
 
@@ -1058,7 +1063,7 @@ def process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_
 
 def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR_horizons, 
                       average_horizons=average_horizons, forecast_horizon=forecast_horizon,
-                        filepath_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, 
+                        file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, 
                         gdp_mode = True, component_name: str = ""):
 
     for model in models:
@@ -1100,7 +1105,6 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
                         index_dfs.append(index_dict(col, data_index, [pd.NA] * forecast_horizon, pd.DataFrame(), forecast_horizon))
                         continue
 
-
                     # Fit the model
                     forecaster = AutoReg(data, lags=AR_order, old_names=False)
                     results = forecaster.fit()
@@ -1126,8 +1130,8 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
 
                 ## Process and Save results
-                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary,
-                                         filepath_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
+                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model,
+                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1182,8 +1186,8 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
 
                 ## Process and Save results
-                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary,
-                                         filepath_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
+                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model,
+                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1224,8 +1228,8 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
 
                 ## Process and Save results
-                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary,
-                                         filepath_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
+                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model,
+                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1275,7 +1279,7 @@ if settings.evaluate_forecast_components:
             AR_horizons=AR_horizons,
             average_horizons=average_horizons,
             forecast_horizon=forecast_horizon,
-            filepath_dt_qoq=file_path_components_qoq,
+            file_path_dt_qoq=file_path_components_qoq,
             file_path_dt_yoy=file_path_components_yoy,
             gdp_mode=False,
             component_name=component_name

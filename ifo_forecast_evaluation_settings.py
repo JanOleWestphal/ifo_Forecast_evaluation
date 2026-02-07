@@ -27,10 +27,10 @@ evaluate_forecast_components = True # True or False
 
 # CODEBOOK:
 """
-# 'GDP' -> to run GVA as well, go below to set run_gva_evaluation = True 
-# 'PRIVCON' (private consumption), 'PUBCON' (public consumption), 'CONSTR' (construction), 
-# 'OPA' (other product assetes), 'INVINV' (investment inventories), 'DOMUSE' (domestic use),
-# 'TRDBAL' (trade balance), 'EXPORT', 'IMPORT'
+'GDP' -> to run GVA as well, go below to set run_gva_evaluation = True 
+'PRIVCON' (private consumption), 'PUBCON' (public consumption), 'CONSTR' (construction), 
+'OPA' (other product assetes), 'INVINV' (investment inventories), 'DOMUSE' (domestic use),
+'TRDBAL' (trade balance), 'EXPORT', 'IMPORT'
 """
 
 
