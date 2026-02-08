@@ -859,16 +859,16 @@ component_input_dir = os.path.join(wd, "0_0_Data", "2_Processed_Data", "3_gdp_co
 # Helpers
 # --------------------------------------------------------------------------------------------------
 
-def third_token_from_filename(path: str) -> str:
+def fourth_token_from_filename(path: str) -> str:
     """
-    Expect filenames like: ifo_qoq_CONSTR_forecasts.xlsx
+    Expect filenames like: ifo_qoq_forecasts_CONSTR.xlsx
     Return: CONSTR (3rd underscore-separated token).
     """
     base = os.path.splitext(os.path.basename(path))[0]
     parts = base.split("_")
-    if len(parts) < 3:
-        raise ValueError(f"Unexpected filename format (need at least 3 '_' tokens): {base}")
-    return parts[2]
+    if len(parts) < 4:
+        raise ValueError(f"Unexpected filename format (need at least 4 '_' tokens): {base}")
+    return parts[3]
 
 
 
@@ -968,14 +968,14 @@ excel_files = [f for f in os.listdir(component_input_dir) if f.lower().endswith(
 
 for f in excel_files:
     in_path = os.path.join(component_input_dir, f)
-    token = third_token_from_filename(in_path)
+    token = fourth_token_from_filename(in_path)
 
     xls = pd.ExcelFile(in_path)
 
     # QoQ RT output
-    out_path_qoq = os.path.join(output_dir_ts_components, f"qoq_rt_{token}_data.xlsx")
+    out_path_qoq = os.path.join(output_dir_ts_components, f"qoq_rt_data_{token}.xlsx")
     # YoY RT output
-    out_path_yoy = os.path.join(output_dir_ts_components, f"yoy_rt_{token}_data.xlsx")
+    out_path_yoy = os.path.join(output_dir_ts_components, f"yoy_rt_data_{token}.xlsx")
 
     # Evaluation outputs (first-release series)
     os.makedirs(output_dir_eval_components, exist_ok=True)
@@ -1169,7 +1169,7 @@ for sheet in xls.sheet_names:
         header=0,
     )
 
-    out_name = f"ifo_qoq_{_safe_sheet_filename(sheet)}_forecasts.xlsx"
+    out_name = f"ifo_qoq_forecasts_{_safe_sheet_filename(sheet)}.xlsx"
     ifo_qoq_output_path = os.path.join(component_forecast_output_dir, out_name)
 
     process_ifo_qoq_forecasts(ifo_qoq_raw, ifo_qoq_output_path)
