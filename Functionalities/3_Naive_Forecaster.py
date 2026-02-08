@@ -229,11 +229,19 @@ for folder in [base_path, folder_path,
 # Data Outputs - COMPONENTS
 # --------------------------------------------------------------------------------------------------
 
-file_path_components_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_QoQ_Component_Forecast_Tables')
-os.makedirs(file_path_components_qoq, exist_ok=True)
+# Combined forecast and observed data
+file_path_dt_components_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_Combined_QoQ_Component_Forecasts')
+os.makedirs(file_path_dt_components_qoq, exist_ok=True)
 
-file_path_components_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_YoY_Component_Forecast_Vectors')
-os.makedirs(file_path_components_yoy, exist_ok=True)
+file_path_dt_components_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_Combined_YoY_Component_Forecasts')
+os.makedirs(file_path_dt_components_yoy, exist_ok=True)
+
+# Forecasts
+file_path_forecasts_components_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '3_QoQ_Component_Forecast_Tables')
+os.makedirs(file_path_forecasts_components_qoq, exist_ok=True)
+
+file_path_forecasts_components_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '3_YoY_Component_Forecast_Vectors')
+os.makedirs(file_path_forecasts_components_yoy, exist_ok=True)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -243,9 +251,12 @@ os.makedirs(file_path_components_yoy, exist_ok=True)
 ## Clear
 if settings.clear_result_folders:
 
-    for folder in [folder_path, file_path_dt_qoq, file_path_dt_yoy,
+    for folder in [folder_path, 
+                   file_path_dt_qoq, file_path_dt_yoy,
                    file_path_forecasts_qoq, file_path_forecasts_qoq_2, 
-                   file_path_forecasts_yoy, file_path_forecasts_yoy_2, file_path_components_qoq]:
+                   file_path_forecasts_yoy, file_path_forecasts_yoy_2, 
+                   file_path_dt_components_qoq, file_path_dt_components_yoy,
+                   file_path_forecasts_components_qoq, file_path_forecasts_components_yoy]:
         
         folder_clear(folder)
 
@@ -615,17 +626,17 @@ def retrieve_qoq_predictions(qoq_forecast_df, model, file_path_forecasts_qoq=fil
     if gdp_mode:
         paths = [file_path_forecasts_qoq, file_path_forecasts_qoq_2]
     else:
-        paths = [file_path_components_qoq]
+        paths = [file_path_forecasts_qoq]
 
     # Store to two different locations
     for path in paths:
 
         # Model-based dynamic naming
         if model in ['AVERAGE', 'GLIDING_AVERAGE']:
-            qoq_forecast_name = f'naive_qoq_{component_name}forecasts_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+            qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
 
         elif model == 'AR':
-            qoq_forecast_name = f'naive_qoq_{component_name}forecasts_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+            qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
 
         # Store to path
         naive_qoq_forecasts.to_excel(os.path.join(path, qoq_forecast_name))
@@ -714,18 +725,18 @@ def save_dt_indexed_results(df_combined_qoq, df_combined_yoy, model,
     if model in ['AVERAGE', 'GLIDING_AVERAGE']:
 
         # Full Data qoq
-        filename_df_combined_qoq = f'dt_full_{component_name}qoq_{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+        filename_df_combined_qoq = f'dt_full_qoq_{component_name}{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
 
         # Full Data yoy
-        filename_df_combined_yoy = f'dt_full_{component_name}yoy_{model}_{average_horizon}_{forecast_horizon-1}.xlsx' 
+        filename_df_combined_yoy = f'dt_full_yoy_{component_name}{model}_{average_horizon}_{forecast_horizon-1}.xlsx' 
 
     elif model == 'AR':
 
         # Full Data qoq
-        filename_df_combined_qoq = f'dt_full_{component_name}qoq_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+        filename_df_combined_qoq = f'dt_full_qoq_{component_name}{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
 
         # Full Data yoy
-        filename_df_combined_yoy = f'dt_full_{component_name}yoy_{model}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+        filename_df_combined_yoy = f'dt_full_yoy_{component_name}{model}_{AR_horizon}_{forecast_horizon-1}.xlsx'
         
 
     ## Store
@@ -1014,6 +1025,8 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
 
 def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df, AR_summary, model,
                              file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
+                             file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
+                             file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
                              gdp_mode=True, component_name: str = ""):
 
             ## Process
@@ -1022,7 +1035,7 @@ def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df, AR
             ## Store Output
 
             # qoq Time Series
-            retrieve_qoq_predictions(qoq_forecast_df, model=model,file_path_forecasts_qoq=file_path_dt_qoq, 
+            retrieve_qoq_predictions(qoq_forecast_df, model=model, file_path_forecasts_qoq=file_path_forecasts_qoq, 
                                      file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
                                      gdp_mode=gdp_mode, component_name=component_name)
 
@@ -1064,6 +1077,8 @@ def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df, AR
 def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR_horizons, 
                       average_horizons=average_horizons, forecast_horizon=forecast_horizon,
                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, 
+                        file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
+                        file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
                         gdp_mode = True, component_name: str = ""):
 
     for model in models:
@@ -1131,7 +1146,10 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
                 ## Process and Save results
                 process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model,
-                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
+                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
+                                         file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
+                                         file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2, 
+                                         gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1187,7 +1205,10 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
                 ## Process and Save results
                 process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model,
-                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
+                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
+                                         file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
+                                         file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+                                         gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1229,7 +1250,10 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
                 ## Process and Save results
                 process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model,
-                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, gdp_mode=gdp_mode,
+                                         file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, 
+                                         file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
+                                         file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+                                         gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1279,8 +1303,10 @@ if settings.evaluate_forecast_components:
             AR_horizons=AR_horizons,
             average_horizons=average_horizons,
             forecast_horizon=forecast_horizon,
-            file_path_dt_qoq=file_path_components_qoq,
-            file_path_dt_yoy=file_path_components_yoy,
+            file_path_dt_qoq=file_path_dt_components_qoq,
+            file_path_dt_yoy=file_path_dt_components_yoy,
+            file_path_forecasts_qoq=file_path_forecasts_components_qoq, 
+            file_path_forecasts_yoy=file_path_forecasts_components_yoy, 
             gdp_mode=False,
             component_name=component_name
         )

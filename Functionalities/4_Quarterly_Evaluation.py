@@ -126,10 +126,11 @@ first_release_upper_limit_quarter = settings.first_release_upper_limit_quarter
 table_folder = os.path.join(wd, '1_Result_Tables')
 graph_folder = os.path.join(wd, '2_Result_Graphs')
 
+component_result_folder = os.path.join(wd, '3_Component_Results')
 
 
 ## Create if needed
-for folder in [table_folder, graph_folder]:
+for folder in [table_folder, graph_folder, component_result_folder ]:
     os.makedirs(folder, exist_ok=True)
 
 
@@ -177,30 +178,43 @@ ifo_qoq_forecasts = pd.read_excel(file_path_ifo_qoq, index_col=0)
 
 
 # --------------------------------------------------------------------------------------------------
-# Load naive forecasts
+# Load naive forecasts 
 # --------------------------------------------------------------------------------------------------
+
+## MAIN GDP ANALYSIS
 
 # Paths to the folders containing the Excel files
 file_path_naive_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_QoQ_Forecast_Tables')
 
 # Load all QoQ naive forecast Excel files into dictionary
 naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naive_qoq_forecasts_')
-#show(naive_qoq_dfs_dict)
+
+
 
 """
-def load_excels_to_dict(folder_path):
+def load_excels_to_dict(folder_path, strip_string=None):
     excel_files = glob.glob(os.path.join(folder_path, '*.xlsx'))
     dfs = {}
     for file in excel_files:
         name = os.path.splitext(os.path.basename(file))[0]
+        
+        # Strip the custom string if provided
+        if strip_string:
+            name = name.replace(strip_string, '')
+        
         dfs[name] = pd.read_excel(file, index_col=0)
     return dfs
 """
 
 
+## COMPONENT ANALYSIS
+file_path_component_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_QoQ_Component_Forecast_Tables')
+component_naive_qoq_dfs_dict = load_excels_to_dict(file_path_component_qoq, strip_string='naive_qoq_forecasts_')
+
+
 
 # --------------------------------------------------------------------------------------------------
-# Load Evaluation Data
+# Load Evaluation Data - main GDP analysis
 # --------------------------------------------------------------------------------------------------
 
 eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
@@ -220,6 +234,18 @@ qoq_latest_eval = pd.read_excel(qoq_path_latest, index_col=0)
 ## Revision
 qoq_path_rev = os.path.join(eval_path, 'revision_qoq_GDP.xlsx')
 qoq_rev = pd.read_excel(qoq_path_rev, index_col=0)
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Load Evaluation Data - main GDP analysis
+# --------------------------------------------------------------------------------------------------
+
+component_eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_component_Evaluation_series')
+
+
+
+
 
 
 
