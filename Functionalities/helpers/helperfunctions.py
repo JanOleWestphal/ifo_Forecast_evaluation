@@ -213,10 +213,18 @@ def get_yoy(df):
 # ==================================================================================================
 
 ## Helper function to load all Excel files in a folder into a dict of DataFrames
-def load_excels_to_dict(folder_path, strip_string=None):
+def load_excels_to_dict(folder_path, strip_string=None, filter=None):
     excel_files = glob.glob(os.path.join(folder_path, '*.xlsx'))
     dfs = {}
     for file in excel_files:
+
+        ## OPTIONAL: filter files by string in filename
+        filename = os.path.basename(file)
+        # Skip if filename does not match filter
+        if isinstance(filter, str) and filter not in filename:
+            continue
+
+
         name = os.path.splitext(os.path.basename(file))[0]
         
         # Strip the custom string if provided
