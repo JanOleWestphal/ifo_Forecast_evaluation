@@ -87,6 +87,32 @@ from Functionalities.helpers.helperfunctions import *
 import ifo_forecast_evaluation_settings as settings
 
 
+def _safe_to_excel(df, path, index=True):
+    """Try to save DataFrame to Excel using available engines; fallback to CSV."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        df.to_excel(path, index=index)
+        return
+    except Exception:
+        pass
+
+    # Try openpyxl explicitly
+    try:
+        with pd.ExcelWriter(path, engine='openpyxl') as writer:
+            df.to_excel(writer, index=index)
+        return
+    except Exception:
+        pass
+
+    # Fallback: write CSV
+    try:
+        csv_path = os.path.splitext(path)[0] + '.csv'
+        df.to_csv(csv_path, index=index)
+        return
+    except Exception as e:
+        raise IOError(f"Failed to save DataFrame to {path} or fallback CSV: {e}") from e
+
+
 
 
 
@@ -1198,8 +1224,86 @@ def _safe_sheet_filename(sheet_name: str) -> str:
     s = re.sub(r"[^A-Za-z0-9_\-]", "", s)
     return s or "sheet"
 
+
+def process_ifo_component_realtime(df_raw):
+    """
+    Process ifo component data to extract real-time data and first releases.
+    
+    Algorithm:
+    1. For each column, extract all non-NA values where row_date < col_date (real-time data)
+    2. Forward-fill: if a column's first entry is NA, take value from the column to the left
+    3. For first release: take the value from one quarter before the column date
+    
+    Returns: df_rt (real-time data), first_release_dict (first release values)
+    """
+    # Set first column as index
+    if df_raw.shape[1] >= 2:
+        df_raw.set_index(df_raw.columns[0], inplace=True)
+    
+    # Convert index and columns to datetime
+    df_raw.index = pd.to_datetime(df_raw.index)
+    df_raw.columns = pd.to_datetime(df_raw.columns)
+    
+    # 1. Build real-time data: for each column, keep only rows where row_date < col_date
+    df_rt = df_raw.copy()
+    for col in df_rt.columns:
+        col_date = col
+        # Set to NaN where row_date >= col_date (keep only dates strictly before column date)
+        invalid_rows = df_rt.index >= col_date
+        df_rt.loc[invalid_rows, col] = np.nan
+
+    # 2. Row-wise forward-fill (left-to-right across columns)
+    #    so that if a cell is NA and the previous (left) column has a value in the same row, copy it.
+    df_rt = df_rt.ffill(axis=1)
+
+    # Drop completely empty rows and columns
+    df_rt = df_rt.dropna(how='all').dropna(how='all', axis=1)
+
+    # 3. Build first release evaluation series per user's algorithm.
+    def build_evaluation_df(source_df):
+        eval_df = pd.DataFrame(index=pd.DatetimeIndex([]), columns=source_df.columns)
+        last_stored = None
+        for col in source_df.columns:
+            col_date = col
+            upper = col_date - pd.DateOffset(months=3)
+            if last_stored is None:
+                lower = source_df.index.min() - pd.DateOffset(months=3)
+            else:
+                lower = last_stored - pd.DateOffset(months=3)
+
+            mask = (source_df.index > lower) & (source_df.index <= upper)
+            candidates = source_df.loc[mask, col]
+
+            for row_date, val in candidates.dropna().items():
+                if row_date not in eval_df.index:
+                    eval_df = eval_df.reindex(eval_df.index.append(pd.DatetimeIndex([row_date])))
+                eval_df.at[row_date, col] = val
+
+            if len(eval_df.index) > 0:
+                last_stored = eval_df.index.max()
+
+        eval_df = eval_df.sort_index().dropna(how='all').dropna(how='all', axis=1)
+        return eval_df
+
+    first_release_eval_df = build_evaluation_df(df_raw)
+
+    # Build a lightweight first-release dict for legacy usage: last non-NA per column
+    first_release_dict = {}
+    for col in df_raw.columns:
+        if col in first_release_eval_df.columns:
+            vals = first_release_eval_df[col].dropna()
+            if len(vals) > 0:
+                first_release_dict[col] = vals.iloc[-1]
+                continue
+        target = col - pd.DateOffset(months=3)
+        if target in df_raw.index and pd.notna(df_raw.at[target, col]):
+            first_release_dict[col] = df_raw.at[target, col]
+
+    return df_rt, first_release_dict, first_release_eval_df
+
+
 # --------------------------------------------------------------------------------------------------
-#  COMPONENT-LEVEL FORECASTS
+#  COMPONENT-LEVEL FORECASTS PROCESSING
 # --------------------------------------------------------------------------------------------------
 
 ifo_components_dir = os.path.join(
@@ -1214,20 +1318,67 @@ if not os.path.exists(ifo_components_path):
 xls = pd.ExcelFile(ifo_components_path)
 
 for sheet in xls.sheet_names:
-    # Load each sheet with the same layout assumption as before:
-    # first two rows are meta, row 3 is header (publication dates), col1 is target date
-    ifo_qoq_raw = pd.read_excel(
+    # Load each sheet
+    # First two rows are meta, row 3 is header (publication dates), col1 is target date
+    df_raw = pd.read_excel(
         ifo_components_path,
         sheet_name=sheet,
         skiprows=2,
         header=0,
     )
+    
+    # Process to get real-time data and first releases (including evaluation df)
+    df_rt, first_release_dict, first_release_eval_df = process_ifo_component_realtime(df_raw.copy())
 
-    out_name = f"ifo_qoq_forecasts_{_safe_sheet_filename(sheet)}.xlsx"
-    ifo_qoq_output_path = os.path.join(component_forecast_output_dir, out_name)
+    # Get YoY from QoQ
+    df_yoy_rt = get_yoy(df_rt)
 
-    process_ifo_qoq_forecasts(ifo_qoq_raw, ifo_qoq_output_path)
-    #print(f"Saved: {ifo_qoq_output_path}")
+    # Save real-time QoQ and YoY data
+    safe_sheet_name = _safe_sheet_filename(sheet)
+    out_path_qoq = os.path.join(output_dir_ts_components, f"qoq_rt_data_{safe_sheet_name}.xlsx")
+    out_path_yoy = os.path.join(output_dir_ts_components, f"yoy_rt_data_{safe_sheet_name}.xlsx")
+
+    _safe_to_excel(df_rt, out_path_qoq, index=True)
+    _safe_to_excel(df_yoy_rt, out_path_yoy, index=True)
+
+    # Save evaluation QoQ table built by the algorithm
+    os.makedirs(output_dir_eval_components, exist_ok=True)
+    out_eval_qoq = os.path.join(output_dir_eval_components, f"first_release_qoq_{safe_sheet_name}.xlsx")
+    _safe_to_excel(first_release_eval_df, out_eval_qoq, index=True)
+
+    # Build YoY evaluation series from the QoQ evaluation table
+    try:
+        first_release_eval_yoy_df = get_yoy(first_release_eval_df)
+    except Exception:
+        first_release_eval_yoy_df = pd.DataFrame()
+
+    out_eval_yoy = os.path.join(output_dir_eval_components, f"first_release_yoy_{safe_sheet_name}.xlsx")
+    _safe_to_excel(first_release_eval_yoy_df, out_eval_yoy, index=True)
+
+    # Also keep legacy simple first-release series derived from the dict (value at t-1q)
+    first_release_series = pd.Series(first_release_dict, name='value')
+    first_release_df = first_release_series.to_frame()
+    first_release_df.index.name = 'date'
+    
+    # Build a legacy first-release YoY series from the evaluation YoY table
+    first_release_yoy_dict = {}
+    if not first_release_eval_yoy_df.empty:
+        for col in first_release_eval_yoy_df.columns:
+            vals = first_release_eval_yoy_df[col].dropna()
+            if len(vals) > 0:
+                first_release_yoy_dict[col] = vals.iloc[-1]
+
+    first_release_yoy_series = pd.Series(first_release_yoy_dict, name='value')
+    first_release_yoy_df = first_release_yoy_series.to_frame()
+    first_release_yoy_df.index.name = 'date'
+    
+    # Save evaluation series (first releases)
+    os.makedirs(output_dir_eval_components, exist_ok=True)
+    out_path_eval_qoq = os.path.join(output_dir_eval_components, f"first_release_qoq_{safe_sheet_name}.xlsx")
+    out_path_eval_yoy = os.path.join(output_dir_eval_components, f"first_release_yoy_{safe_sheet_name}.xlsx")
+    
+    _safe_to_excel(first_release_df, out_path_eval_qoq, index=True)
+    _safe_to_excel(first_release_yoy_df, out_path_eval_yoy, index=True)
 
 
 

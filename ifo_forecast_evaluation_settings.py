@@ -22,7 +22,7 @@ To do this, select the series to be evaluated below and run scripts 1,2,3,4
 """
 
 # Deicde whether to run the main evaluation of ifo's GDP forecasts against rt data; set to False to only run the component evaluation
-evaluate_quarterly_gdp_forecast = False # True or False
+evaluate_quarterly_gdp_forecasts = False # True or False
 
 # Select which part of the ifo forecast you want to evaluate
 evaluate_forecast_components = True # True or False

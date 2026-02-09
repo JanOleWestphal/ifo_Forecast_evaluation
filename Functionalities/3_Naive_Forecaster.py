@@ -1169,7 +1169,9 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
                 # Combine diagnostics and forecasts
                 AR_summary = pd.concat([r.to_frame().T for r in summary_rows], ignore_index=True)
                 qoq_forecast_df = pd.concat(forecast_cols, axis=1)
-                qoq_forecast_index_df = pd.concat(index_dfs, ignore_index=True)
+                # Filter out empty DataFrames before concatenation
+                index_dfs_filtered = [df for df in index_dfs if not df.empty]
+                qoq_forecast_index_df = pd.concat(index_dfs_filtered, ignore_index=True) if index_dfs_filtered else pd.DataFrame()
                 # show(qoq_forecast_df)
 
 
