@@ -21,20 +21,23 @@ The original project was to evaluate the ifo GDP forecasts, but its component's 
 To do this, select the series to be evaluated below and run scripts 1,2,3,4
 """
 
+# Deicde whether to run the main evaluation of ifo's GDP forecasts against rt data; set to False to only run the component evaluation
+evaluate_quarterly_gdp_forecast = False # True or False
+
 # Select which part of the ifo forecast you want to evaluate
 evaluate_forecast_components = True # True or False
 
-
 # CODEBOOK:
 """
-'GDP' -> to run GVA as well, go below to set run_gva_evaluation = True 
+'GDP' -> slightly faulty data, kept as a sanity check; for proper evaluation run main analysis
 'PRIVCON' (private consumption), 'PUBCON' (public consumption), 'CONSTR' (construction), 
 'OPA' (other product assetes), 'INVINV' (investment inventories), 'DOMUSE' (domestic use),
 'TRDBAL' (trade balance), 'EXPORT', 'IMPORT'
 """
 
-
-
+# Decide whether to run filtered timeframe analysis for components (e.g., 2010-Q1 to 2017-Q1) as 
+# well as outlier filtering; Set to False for faster execution
+run_component_filter = False # True or False
 
 
 
@@ -64,10 +67,10 @@ run_naive_forecaster = True  # True or False
 run_quarterly_evaluation = True  # True or False
 
 # 5.: Decide whether to run the ifoCAST evaluation module
-run_ifoCAST_evaluation = True  # True or False
+run_ifoCAST_evaluation = False  # True or False
 
 # 6.: Decide whether to run the ifoCAST long-term evaluation module
-run_ifoCAST_long_term_evaluation = True  # True or False
+run_ifoCAST_long_term_evaluation = False  # True or False
 
 
 ## Decide whether to overwrite previous output (always overwriten if same functionality is executed)
@@ -80,7 +83,7 @@ macro_clear = True  # True or False
 
 
 # ==================================================================================================
-#                                         DATA SETTINGS - GDP and GVA
+#                                    DATA SETTINGS - GDP and GVA
 # ==================================================================================================
 
 # Decide wether to use Real time (True) or a local version of the Bundesbank data (False)
@@ -187,6 +190,9 @@ Note:
 -> this parameter does not conduct a degree of freedom correction, i.e. there are AR_horizon - AR_order 
    free observations available.
 """
+
+# For AR model: set the minimum number of observations required to estimate the AR model; int, should be more than AR_order
+min_AR_observations = 20
 
 # For average-based models: set time frame over which the agent averages in quarters; list of int or 'FULL'
 average_horizons = [1,10]

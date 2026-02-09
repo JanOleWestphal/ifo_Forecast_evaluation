@@ -178,7 +178,7 @@ else:
 if settings.run_quarterly_evaluation:
     execute_script('4_Quarterly_Evaluation.py')
 else: 
-    print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
+    print("Warning: No new quarterly evalaution output has been generated, set run_quarterly_evaluation if desired. \n ")
 
 
 # ==================================================================================================
@@ -187,7 +187,7 @@ else:
 if settings.run_ifoCAST_evaluation:
     execute_script('5_ifoCAST_Evaluation.py')
 else: 
-    print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
+    print("Warning: No new ifoCAST evalaution output has been generated, set run_ifoCAST_evaluation =True if desired. \n ")
 
 
 # ==================================================================================================
@@ -196,7 +196,7 @@ else:
 if settings.run_ifoCAST_long_term_evaluation:
     execute_script('6_ifoCAST_long_term_Evaluation.py')
 else: 
-    print("Warning: No new evalaution output has been generated, set run_evaluation if desired. \n ")
+    print("Warning: No new ifoCAST long-term evalaution output has been generated, set run_ifoCAST_long_term_evaluation =True if desired. \n ")
 
 print('\nifo Forecast Evaluation completed successfully! \n')
 
