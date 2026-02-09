@@ -13,9 +13,11 @@
 
 
 """
-Remaining Bugs:
-- ifo Nowcast and some Q1 errors are clearly faulty
-- naive forecasts generate incomplete error series
+Remaining Bugs/Issues:
+- ifo errors in the nowcast are faulty at least from Q2-2020 onwards, reasons unclear
+- filter for naive forecasts with unavailable horizons to the ifo forecasts is faulty, needs to be ammended
+
+- Dynamic naming of graphs should be improved
 """
 
 
@@ -857,17 +859,21 @@ if settings.evaluate_forecast_components:
     # ==================================================================================================
     # Build joint evaluation dataframes for components
     # ==================================================================================================
-    
+
+
+    """
+    NOTE: this code is both faulty ammend to filter for naive forecast horizons unavailable to the ifo forecast
+
     def filter_naive_for_ifo_components(ifo_components_dict, naive_components_dict):
-        """
-        Filter component dicts to match ifo and naive forecasts
-        """
+
         filtered_naive = {}
         
         for comp_name in component_names:
             if comp_name in ifo_components_dict and comp_name in naive_components_dict:
                 ifo_df = ifo_components_dict[comp_name]
                 naive_dict = naive_components_dict[comp_name]
+                #show(ifo_df)
+                #show(naive_dict)
                 
                 # Execute the filter function
                 filtered_naive_comp = match_ifo_naive_forecasts_dates(ifo_df, naive_dict)
@@ -883,16 +889,20 @@ if settings.evaluate_forecast_components:
                 
                 # Filter naive forecasts accordingly
                 filtered_naive_comp = match_ifo_naive_forecasts_dates(ifo_df_filtered, filtered_naive_comp)
+                #show(filtered_naive_comp)
                 
                 filtered_naive[comp_name] = filtered_naive_comp
         
         return filtered_naive
     
     # Build filtered component dicts
-    component_naive_qoq_dfs_dict_filtered = filter_naive_for_ifo_components(
+    component_naive_qoq_dfs_dict_filtered = component_naive_qoq_dfs_dict
+    """
+    """
+    filter_naive_for_ifo_components(
         ifo_qoq_forecasts_components, 
         component_naive_qoq_dfs_dict
-    )
+    )"""
     
     # ==================================================================================================
     # Component-level evaluation pipeline
