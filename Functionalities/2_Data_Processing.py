@@ -1261,45 +1261,56 @@ def process_ifo_component_realtime(df_raw):
 
     # 3. Build first release evaluation series per user's algorithm.
     def build_evaluation_df(source_df):
-        eval_df = pd.DataFrame(index=pd.DatetimeIndex([]), columns=source_df.columns)
-        last_stored = None
-        for col in source_df.columns:
-            col_date = col
-            upper = col_date - pd.DateOffset(months=3)
-            if last_stored is None:
-                lower = source_df.index.min() - pd.DateOffset(months=3)
-            else:
-                lower = last_stored - pd.DateOffset(months=3)
+        """
+        Build an evaluation DataFrame as an n×1 series of first releases.
 
-            mask = (source_df.index > lower) & (source_df.index <= upper)
-            candidates = source_df.loc[mask, col]
+        For each publication column (col_date):
+        1) Consider values available at publication: row_date < col_date
+        2) Keep only values with row_date > last_stored_row (newly released since last publication)
+        3) Append those (row_date, value) into a single column: 'first_release_value'
+        4) Update last_stored_row to the max row_date added so far
+        """
+        eval_s = pd.Series(dtype="float64", name="first_release_value")
+        last_stored_row = None
 
-            for row_date, val in candidates.dropna().items():
-                if row_date not in eval_df.index:
-                    eval_df = eval_df.reindex(eval_df.index.append(pd.DatetimeIndex([row_date])))
-                eval_df.at[row_date, col] = val
+        # ensure datetime index/columns if needed
+        source = source_df.copy()
+        source.index = pd.to_datetime(source.index, errors="coerce")
+        source = source[source.index.notna()]
 
-            if len(eval_df.index) > 0:
-                last_stored = eval_df.index.max()
+        # if columns are datetimes, sort them; otherwise keep order
+        try:
+            source.columns = pd.to_datetime(source.columns, errors="coerce")
+            source = source.loc[:, ~source.columns.isna()]
+            source = source.reindex(sorted(source.columns), axis=1)
+        except Exception:
+            pass
 
-        eval_df = eval_df.sort_index().dropna(how='all').dropna(how='all', axis=1)
+        for col_date in source.columns:
+            # Step 1: rows available at publication
+            candidates = source.loc[source.index < col_date, col_date].dropna()
+
+            # Step 2: only new rows since last publication
+            if last_stored_row is not None:
+                candidates = candidates[candidates.index > last_stored_row]
+
+            # Step 3: add to single series (do not overwrite existing dates)
+            if not candidates.empty:
+                # keep only dates not already stored (extra safety)
+                candidates = candidates[~candidates.index.isin(eval_s.index)]
+                eval_s = pd.concat([eval_s, candidates.rename("first_release_value")])
+
+                # Step 4: update last stored row
+                last_stored_row = eval_s.index.max()
+
+        eval_df = eval_s.sort_index().to_frame()
+        eval_df.index.name = "date"
         return eval_df
+
 
     first_release_eval_df = build_evaluation_df(df_raw)
 
-    # Build a lightweight first-release dict for legacy usage: last non-NA per column
-    first_release_dict = {}
-    for col in df_raw.columns:
-        if col in first_release_eval_df.columns:
-            vals = first_release_eval_df[col].dropna()
-            if len(vals) > 0:
-                first_release_dict[col] = vals.iloc[-1]
-                continue
-        target = col - pd.DateOffset(months=3)
-        if target in df_raw.index and pd.notna(df_raw.at[target, col]):
-            first_release_dict[col] = df_raw.at[target, col]
-
-    return df_rt, first_release_dict, first_release_eval_df
+    return df_rt, first_release_eval_df
 
 
 # --------------------------------------------------------------------------------------------------
@@ -1328,7 +1339,7 @@ for sheet in xls.sheet_names:
     )
     
     # Process to get real-time data and first releases (including evaluation df)
-    df_rt, first_release_dict, first_release_eval_df = process_ifo_component_realtime(df_raw.copy())
+    df_rt, first_release_eval_df = process_ifo_component_realtime(df_raw.copy())
 
     # Get YoY from QoQ
     df_yoy_rt = get_yoy(df_rt)
@@ -1355,30 +1366,7 @@ for sheet in xls.sheet_names:
     out_eval_yoy = os.path.join(output_dir_eval_components, f"first_release_yoy_{safe_sheet_name}.xlsx")
     _safe_to_excel(first_release_eval_yoy_df, out_eval_yoy, index=True)
 
-    # Also keep legacy simple first-release series derived from the dict (value at t-1q)
-    first_release_series = pd.Series(first_release_dict, name='value')
-    first_release_df = first_release_series.to_frame()
-    first_release_df.index.name = 'date'
-    
-    # Build a legacy first-release YoY series from the evaluation YoY table
-    first_release_yoy_dict = {}
-    if not first_release_eval_yoy_df.empty:
-        for col in first_release_eval_yoy_df.columns:
-            vals = first_release_eval_yoy_df[col].dropna()
-            if len(vals) > 0:
-                first_release_yoy_dict[col] = vals.iloc[-1]
 
-    first_release_yoy_series = pd.Series(first_release_yoy_dict, name='value')
-    first_release_yoy_df = first_release_yoy_series.to_frame()
-    first_release_yoy_df.index.name = 'date'
-    
-    # Save evaluation series (first releases)
-    os.makedirs(output_dir_eval_components, exist_ok=True)
-    out_path_eval_qoq = os.path.join(output_dir_eval_components, f"first_release_qoq_{safe_sheet_name}.xlsx")
-    out_path_eval_yoy = os.path.join(output_dir_eval_components, f"first_release_yoy_{safe_sheet_name}.xlsx")
-    
-    _safe_to_excel(first_release_df, out_path_eval_qoq, index=True)
-    _safe_to_excel(first_release_yoy_df, out_path_eval_yoy, index=True)
 
 
 
