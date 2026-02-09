@@ -127,8 +127,7 @@ table_folder = os.path.join(wd, '1_Result_Tables')
 graph_folder = os.path.join(wd, '2_Result_Graphs')
 
 component_result_folder = os.path.join(wd, '3_Component_Results')
-component_table_folder = os.path.join(component_result_folder, '1_Component_Tables')
-component_graph_folder = os.path.join(component_result_folder, '2_Component_Graphs')
+
 
 
 ## Create if needed
@@ -166,7 +165,7 @@ print("\n Loading Evaluation Data ...  \n")
 
 
 # --------------------------------------------------------------------------------------------------
-# Load ifo forecasts
+# Load ifo forecasts - GDP
 # --------------------------------------------------------------------------------------------------
 
 # Path
@@ -176,8 +175,28 @@ file_path_ifo_qoq = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_
 # Load 
 ifo_qoq_forecasts = pd.read_excel(file_path_ifo_qoq, index_col=0)
 
-# Store full dataset for full Error Time Series later on
-ifo_qoq_forecasts_full = ifo_qoq_forecasts.copy()
+
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Load ifo forecasts - components
+# --------------------------------------------------------------------------------------------------
+
+# Path
+file_path_ifo_qoq_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_gdp_component_forecast')
+
+# Load - manually parse component names from filenames
+ifo_qoq_forecasts_components = {}
+if os.path.exists(file_path_ifo_qoq_components):
+    component_files = glob.glob(os.path.join(file_path_ifo_qoq_components, 'ifo_qoq_forecasts_*.xlsx'))
+    for file in component_files:
+        filename = os.path.basename(file)
+        # Extract component name from 'ifo_qoq_forecasts_COMPONENT.xlsx'
+        comp_name = filename.replace('ifo_qoq_forecasts_', '').replace('.xlsx', '')
+        ifo_qoq_forecasts_components[comp_name] = pd.read_excel(file, index_col=0)
+        print(f"  Loaded ifo forecasts for component: {comp_name}")
+
 
 
 
@@ -193,8 +212,7 @@ file_path_naive_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1
 # Load all QoQ naive forecast Excel files into dictionary
 naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naive_qoq_forecasts_')
 
-# Store full dataset for full Error Time Series later on
-naive_qoq_dfs_dict_full = naive_qoq_dfs_dict.copy()
+
 
 
 """
@@ -214,9 +232,30 @@ def load_excels_to_dict(folder_path, strip_string=None):
 
 
 ## COMPONENT ANALYSIS
-file_path_component_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_QoQ_Component_Forecast_Tables')
-component_naive_qoq_dfs_dict = load_excels_to_dict(file_path_component_qoq, strip_string='naive_qoq_forecasts_')
+file_path_component_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '3_QoQ_Component_Forecast_Tables')
 
+# Load component naive forecasts with structure: naive_qoq_forecasts_COMPONENT_MODEL.xlsx
+component_naive_qoq_dfs_dict = {}
+
+if os.path.exists(file_path_component_qoq):
+    component_files = glob.glob(os.path.join(file_path_component_qoq, 'naive_qoq_forecasts_*.xlsx'))
+    
+    for file in component_files:
+        filename = os.path.basename(file)
+        # Extract component and model from 'naive_qoq_forecasts_COMPONENT_MODEL.xlsx'
+        # e.g., 'naive_qoq_forecasts_CONSTR_AR2_50_9.xlsx' -> component='CONSTR', model='AR2_50_9'
+        parts = filename.replace('naive_qoq_forecasts_', '').replace('.xlsx', '').split('_', 1)
+        
+        if len(parts) == 2:
+            component = parts[0]
+            model = parts[1]
+            
+            if component not in component_naive_qoq_dfs_dict:
+                component_naive_qoq_dfs_dict[component] = {}
+            
+            df = pd.read_excel(file, index_col=0)
+            component_naive_qoq_dfs_dict[component][model] = df
+            print(f"  Loaded component forecast: {component} - {model}")
 
 
 
@@ -246,14 +285,23 @@ qoq_rev = pd.read_excel(qoq_path_rev, index_col=0)
 
 
 # --------------------------------------------------------------------------------------------------
-# Load Evaluation Data - main GDP analysis
+# Load Evaluation Data - component analysis
 # --------------------------------------------------------------------------------------------------
 
 component_eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_component_Evaluation_series')
+component_first_eval_dict = {}
 
-## First Releases
-component_first_eval_dict = load_excels_to_dict(component_eval_path, strip_string='first_release_qoq_', filter='qoq')
-
+# Load evaluation data for each component
+if os.path.exists(component_eval_path):
+    component_names_check = ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
+    for comp in component_names_check:
+        eval_file = os.path.join(component_eval_path, f'first_release_qoq_{comp}.xlsx')
+        if os.path.exists(eval_file):
+            try:
+                component_first_eval_dict[comp] = pd.read_excel(eval_file, index_col=0)
+                print(f"  Loaded evaluation data for component: {comp}")
+            except Exception as e:
+                print(f"  ⚠ Could not load evaluation data for {comp}: {e}")
 
 
 
@@ -271,7 +319,7 @@ component_first_eval_dict = load_excels_to_dict(component_eval_path, strip_strin
 # -------------------------------------------------------------------------------------------------#
 
 
-def build_joint_evaluation_df(ifo_qoq_forecast_df=ifo_qoq_forecasts, naive_qoq_dfs_dict=naive_qoq_dfs_dict):
+def filter_naive_for_ifo_forecasts(ifo_qoq_forecast_df=ifo_qoq_forecasts, naive_qoq_dfs_dict=naive_qoq_dfs_dict):
 
     # ==================================================================================================
     # Select whether to omit Naive Forecaster Observations if no ifo Forecast is available
@@ -279,6 +327,16 @@ def build_joint_evaluation_df(ifo_qoq_forecast_df=ifo_qoq_forecasts, naive_qoq_d
 
     ## Execute the filter function: drop all naive qoq which do not have a corresponding ifo qoq forecast
     naive_qoq_dfs_dict = match_ifo_naive_forecasts_dates(ifo_qoq_forecast_df, naive_qoq_dfs_dict)
+
+
+    ## LEGACY CODE: full dataset without evaluation timeframe filtering
+    # Store full dataset for full Error Time Series later on
+    #ifo_qoq_forecasts_full = ifo_qoq_forecast_df.copy()
+
+    # Store full dataset for full Error Time Series later on
+    #naive_qoq_dfs_dict_full = naive_qoq_dfs_dict.copy()
+
+
 
     # ==================================================================================================
     # Select Evaluation timeframe
@@ -306,7 +364,7 @@ def build_joint_evaluation_df(ifo_qoq_forecast_df=ifo_qoq_forecasts, naive_qoq_d
 #  MAIN GDP EVALUATION
 # ==================================================================================================
 
-naive_qoq_dfs_dict = build_joint_evaluation_df(ifo_qoq_forecasts, naive_qoq_dfs_dict)
+naive_qoq_dfs_dict = filter_naive_for_ifo_forecasts(ifo_qoq_forecasts, naive_qoq_dfs_dict)
 
 
 
@@ -336,8 +394,8 @@ GENERAL PIPELINE:
 """
 
 def qoq_error_evaluation_pipeline(ifo_qoq_df, naive_qoq_dict, 
-                                  ifo_qoq_error_path, ifo_qoq_table_path, naive_qoq_error_path, naive_qoq_table_path,
-                                  subset_mode= False, sd_filter_mode=False, main_mode=True,
+                                  ifo_qoq_error_path=None, ifo_qoq_table_path=None, naive_qoq_error_path=None, naive_qoq_table_path=None,
+                                  subset_mode=False, sd_filter_mode=False, main_mode=True,
                                   sd_cols=5, sd_threshold=0.05):
 
 
@@ -723,41 +781,43 @@ def qoq_error_evaluation_pipeline(ifo_qoq_df, naive_qoq_dict,
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
-# --------------------------------------------------------------------------------------------------
-# Full time series
-# --------------------------------------------------------------------------------------------------
 
-## Unfiltered Data
-print(" \nAnalysing the full error series ... \n")
-qoq_error_evaluation_pipeline(ifo_qoq_df=ifo_qoq_forecasts_full,
-                              naive_qoq_dict= naive_qoq_dfs_dict_full,
-                              sd_filter_mode=False)
+if settings.evaluate_quarterly_gdp_forecasts:
+    # --------------------------------------------------------------------------------------------------
+    # Full time series
+    # --------------------------------------------------------------------------------------------------
 
-## Filtered Errors: Drop Outliers as resulting from crisis events, e.g. 2009 and Covid Quarters
-if settings.drop_outliers:
-    print(" \nDropping Outliers from Error Series before Re-evaluation ... \n")
-    qoq_error_evaluation_pipeline(ifo_qoq_df=ifo_qoq_forecasts_full,
-                              naive_qoq_dict= naive_qoq_dfs_dict_full,
-                              sd_filter_mode=True, sd_cols=5, sd_threshold=settings.sd_threshold)
-
-
-
-# --------------------------------------------------------------------------------------------------
-# Filtered time series (e.g. from 2010-Q1 - 2017-Q1)
-# --------------------------------------------------------------------------------------------------
-
-## Unfiltered Data
-print(f" \nAnalysing error series from {first_release_lower_limit_year}-{first_release_lower_limit_quarter} to {first_release_upper_limit_year}-{first_release_upper_limit_quarter}... \n")
-qoq_error_evaluation_pipeline(ifo_qoq_df=ifo_qoq_forecasts,
-                              naive_qoq_dict= naive_qoq_dfs_dict,
-                              sd_filter_mode=False, subset_mode=True)
-
-## Filtered Errors: Drop Outliers as resulting from crisis events, e.g. 2009 and Covid Quarters
-if settings.filter_outliers_within_eval_intervall:
-    print(" \nDropping Outliers from Error Series before Re-evaluation ... \n")
+    ## Unfiltered Data
+    print(" \nAnalysing the full error series ... \n")
     qoq_error_evaluation_pipeline(ifo_qoq_df=ifo_qoq_forecasts,
-                              naive_qoq_dict= naive_qoq_dfs_dict,
-                              sd_filter_mode=True, subset_mode=True, sd_cols=5, sd_threshold=settings.sd_threshold)
+                                naive_qoq_dict= naive_qoq_dfs_dict,
+                                sd_filter_mode=False)
+
+    ## Filtered Errors: Drop Outliers as resulting from crisis events, e.g. 2009 and Covid Quarters
+    if settings.drop_outliers:
+        print(" \nDropping Outliers from Error Series before Re-evaluation ... \n")
+        qoq_error_evaluation_pipeline(ifo_qoq_df=ifo_qoq_forecasts,
+                                naive_qoq_dict= naive_qoq_dfs_dict,
+                                sd_filter_mode=True, sd_cols=5, sd_threshold=settings.sd_threshold)
+
+
+
+    # --------------------------------------------------------------------------------------------------
+    # Filtered time series (e.g. from 2010-Q1 - 2017-Q1)
+    # --------------------------------------------------------------------------------------------------
+
+    ## Unfiltered Data
+    print(f" \nAnalysing error series from {first_release_lower_limit_year}-{first_release_lower_limit_quarter} to {first_release_upper_limit_year}-{first_release_upper_limit_quarter}... \n")
+    qoq_error_evaluation_pipeline(ifo_qoq_df=ifo_qoq_forecasts,
+                                naive_qoq_dict= naive_qoq_dfs_dict,
+                                sd_filter_mode=False, subset_mode=True)
+
+    ## Filtered Errors: Drop Outliers as resulting from crisis events, e.g. 2009 and Covid Quarters
+    if settings.filter_outliers_within_eval_intervall:
+        print(" \nDropping Outliers from Error Series before Re-evaluation ... \n")
+        qoq_error_evaluation_pipeline(ifo_qoq_df=ifo_qoq_forecasts,
+                                naive_qoq_dict= naive_qoq_dfs_dict,
+                                sd_filter_mode=True, subset_mode=True, sd_cols=5, sd_threshold=settings.sd_threshold)
 
 
 
@@ -776,13 +836,350 @@ if settings.filter_outliers_within_eval_intervall:
 
 
 if settings.evaluate_forecast_components:
+    
+    print("\n\n" + "="*100)
+    print("COMPONENT-LEVEL EVALUATION")
+    print("="*100 + "\n")
+    
+    # ==================================================================================================
+    # Component Names and Setup
+    # ==================================================================================================
+    
+    component_names = ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
+    
+    # ==================================================================================================
+    # Build joint evaluation dataframes for components
+    # ==================================================================================================
+    
+    def filter_naive_for_ifo_components(ifo_components_dict, naive_components_dict):
+        """
+        Filter component dicts to match ifo and naive forecasts
+        """
+        filtered_naive = {}
+        
+        for comp_name in component_names:
+            if comp_name in ifo_components_dict and comp_name in naive_components_dict:
+                ifo_df = ifo_components_dict[comp_name]
+                naive_dict = naive_components_dict[comp_name]
+                
+                # Execute the filter function
+                filtered_naive_comp = match_ifo_naive_forecasts_dates(ifo_df, naive_dict)
+                
+                # Apply row and col selection
+                ifo_df_filtered = filter_first_release_limit(ifo_df)
+                ifo_df_filtered = filter_evaluation_limit(ifo_df_filtered)
+                
+                for key, val in filtered_naive_comp.items():
+                    val = filter_first_release_limit(val)
+                    val = filter_evaluation_limit(val)
+                    filtered_naive_comp[key] = val
+                
+                # Filter naive forecasts accordingly
+                filtered_naive_comp = match_ifo_naive_forecasts_dates(ifo_df_filtered, filtered_naive_comp)
+                
+                filtered_naive[comp_name] = filtered_naive_comp
+        
+        return filtered_naive
+    
+    # Build filtered component dicts
+    component_naive_qoq_dfs_dict_filtered = filter_naive_for_ifo_components(
+        ifo_qoq_forecasts_components, 
+        component_naive_qoq_dfs_dict
+    )
+    
+    # ==================================================================================================
+    # Component-level evaluation pipeline
+    # ==================================================================================================
+    
+    def qoq_error_evaluation_pipeline_components(component_name, 
+                                                 ifo_qoq_df_components, naive_qoq_dict_components, 
+                                                 component_eval_dict,
+                                                 subset_mode=False, sd_filter_mode=False):
+        """
+        Evaluate component-level forecasts with results stored in component-specific folders
+        """
+        
+        # ==================================================================================================
+        # Dynamic Naming
+        # ==================================================================================================
+        
+        filter_str = "_sd_filtered" if sd_filter_mode else ""
+        subset_str = f"_{first_release_lower_limit_year}{first_release_lower_limit_quarter}_{first_release_upper_limit_year}{first_release_upper_limit_quarter}" if subset_mode else ""
+        
+        # ==================================================================================================
+        # Component-specific folder paths
+        # ==================================================================================================
+        
+        comp_folder = os.path.join(component_result_folder, component_name)
+        comp_table_folder = os.path.join(comp_folder, 'Tables')
+        comp_graph_folder = os.path.join(comp_folder, 'Graphs')
+        comp_data_folder = os.path.join(comp_folder, 'Data')
+        
+        # Create folders
+        for folder in [comp_table_folder, comp_graph_folder, comp_data_folder]:
+            os.makedirs(folder, exist_ok=True)
+        
+        # Clear if needed
+        if settings.clear_result_folders:
+            for folder in [comp_table_folder, comp_graph_folder, comp_data_folder]:
+                folder_clear(folder)
+        
+        # ==================================================================================================
+        # Savepaths
+        # ==================================================================================================
+        
+        # ifo
+        ifo_qoq_error_path = os.path.join(comp_data_folder, f'ifo_err{subset_str}')
+        ifo_qoq_table_path = os.path.join(comp_table_folder, f'ifo_tbl{filter_str}{subset_str}')
+        
+        # Naive
+        naive_qoq_error_path = os.path.join(comp_data_folder, f'naive_err{subset_str}')
+        naive_qoq_table_path = os.path.join(comp_table_folder, f'naive_tbl{filter_str}{subset_str}')
+        
+        # Create if needed
+        for folder in [ifo_qoq_error_path, ifo_qoq_table_path, naive_qoq_error_path, naive_qoq_table_path]:
+            os.makedirs(folder, exist_ok=True)
+        
+        # Clear
+        if settings.clear_result_folders:
+            for folder in [ifo_qoq_error_path, ifo_qoq_table_path, naive_qoq_error_path, naive_qoq_table_path]:
+                folder_clear(folder)
 
 
+
+
+        
+        # ==================================================================================================
+        # ifo QoQ FORECASTS
+        # ==================================================================================================
+        
+        
+        ## Get Error Series
+        ifo_qoq_forecasts_eval_first = create_qoq_evaluation_df(ifo_qoq_df_components, component_eval_dict)
+        ifo_qoq_forecasts_eval_first_collapsed = collapse_quarterly_prognosis(ifo_qoq_forecasts_eval_first)
+        
+        ifo_qoq_errors_first = get_qoq_error_series(ifo_qoq_forecasts_eval_first_collapsed,
+                                                ifo_qoq_error_path, 
+                                                file_name=f"ifo_qoq_errors_first_eval{subset_str}.xlsx")
+        if sd_filter_mode:
+            ifo_qoq_errors_first = drop_outliers(ifo_qoq_errors_first, sd_cols=5, sd_threshold=settings.sd_threshold)
+        
+        ## Get Table
+        ifo_qoq_error_table_first = get_qoq_error_statistics_table(ifo_qoq_errors_first,                                                            
+                                                                'first_eval', ifo_qoq_table_path, 
+                                                                f'ifo_qoq_forecast_error_table_first_eval{filter_str}{subset_str}.xlsx')
+        
+
+
+
+        # ==================================================================================================
+        # NAIVE QoQ FORECASTS
+        # ==================================================================================================
+        
+        # --------------------------------------------------------------------------------------------------
+        # Preprocess
+        # --------------------------------------------------------------------------------------------------
+        
+        naive_qoq_first_eval_dfs = {}
+        naive_qoq_first_eval_dfs_collapsed = {}
+        
+        # Loop over all available models
+        for name, df in naive_qoq_dict_components.items():
+            
+            ## Evaluate against first release
+            naive_qoq_first_eval_dfs[name] = create_qoq_evaluation_df(df, component_eval_dict)
+            naive_qoq_first_eval_dfs_collapsed[name] = collapse_quarterly_prognosis(naive_qoq_first_eval_dfs[name])
+        
+        # --------------------------------------------------------------------------------------------------
+        # Get Error Series
+        # --------------------------------------------------------------------------------------------------
+        
+        naive_qoq_first_eval_error_series_dict = {}
+        naive_qoq_first_eval_error_tables_dict = {}
+        
+        # Run evaluation loop over all models
+        for name, df in naive_qoq_first_eval_dfs_collapsed.items():
+            
+            naive_qoq_first_eval_error_series_dict[name] = get_qoq_error_series(df,
+                                                                naive_qoq_error_path, 
+                                                                file_name=f"{name}_qoq_errors_first_eval{subset_str}.xlsx")
+            
+            if sd_filter_mode:
+                naive_qoq_first_eval_error_series_dict[name] = drop_outliers(
+                    naive_qoq_first_eval_error_series_dict[name],
+                    sd_cols=5,
+                    sd_threshold=settings.sd_threshold
+                )
+            
+            naive_qoq_first_eval_error_tables_dict[name] = get_qoq_error_statistics_table(
+                                                                naive_qoq_first_eval_error_series_dict[name],
+                                                                'first_eval', naive_qoq_table_path, 
+                                                            f'{name}_qoq_forecast_error_table_first_eval{filter_str}{subset_str}.xlsx')
+            
+
+
+        
+        # ==================================================================================================
+        # VISUALIZATIONS
+        # ==================================================================================================
+        
+        print(f"Visualizing component {component_name} error statistics ...")
+        
+        # --------------------------------------------------------------------------------------------------
+        # Error Time Series
+        # --------------------------------------------------------------------------------------------------
+        
+        first_eval_error_series_path_ifo = os.path.join(comp_graph_folder, f'ts_ifo{filter_str}{subset_str}')
+        first_eval_error_series_path = os.path.join(comp_graph_folder, f'ts_jnt{filter_str}{subset_str}')
+        
+        # Ensure all parent directories exist
+        os.makedirs(first_eval_error_series_path_ifo, exist_ok=True)
+        os.makedirs(first_eval_error_series_path, exist_ok=True)
+        
+        if settings.clear_result_folders:
+            for folder in [first_eval_error_series_path_ifo, first_eval_error_series_path]:
+                folder_clear(folder)
+        
+        plot_forecast_timeseries(ifo_qoq_forecasts_eval_first, 
+                                df_eval=component_eval_dict, title_prefix=None, figsize=(12, 8), linestyle=None,
+                                    show=False, 
+                                    save_path=first_eval_error_series_path_ifo, save_name_prefix=f'ifo_ts{filter_str}{subset_str}_', select_quarters=None)
+        
+        plot_forecast_timeseries(ifo_qoq_forecasts_eval_first, naive_qoq_first_eval_dfs, 
+                                df_eval=component_eval_dict, title_prefix=None, figsize=(12, 8), linestyle=None,
+                                    show=False, 
+                                    save_path=first_eval_error_series_path, save_name_prefix=f'jnt_ts{filter_str}{subset_str}_', select_quarters=None)
+        
+        # --------------------------------------------------------------------------------------------------
+        # Error Scatter Plots
+        # --------------------------------------------------------------------------------------------------
+        
+        first_eval_error_line_path = os.path.join(comp_graph_folder, f'sc{filter_str}{subset_str}')
+        
+        os.makedirs(first_eval_error_line_path, exist_ok=True)
+        
+        if settings.clear_result_folders:
+            folder_clear(first_eval_error_line_path)
+        
+        plot_error_lines(ifo_qoq_errors_first, 
+                        show=False, 
+                        n_bars=QoQ_eval_n_bars,
+                        save_path=first_eval_error_line_path,
+                        save_name=f'ifo_sc{filter_str}{subset_str}.png')
+        
+        plot_error_lines(ifo_qoq_errors_first, naive_qoq_first_eval_error_series_dict,
+                        show=False, 
+                        n_bars=QoQ_eval_n_bars,
+                        save_path=first_eval_error_line_path,
+                        save_name=f'jnt_sc{filter_str}{subset_str}.png')
+        
+        # --------------------------------------------------------------------------------------------------
+        # Error Bar Plots
+        # --------------------------------------------------------------------------------------------------
+        
+        first_eval_error_bars_path = os.path.join(comp_graph_folder, f'1_QoQ_Error_Bars{filter_str}{subset_str}')
+        
+        os.makedirs(first_eval_error_bars_path, exist_ok=True)
+        
+        if settings.clear_result_folders:
+            folder_clear(first_eval_error_bars_path)
+        
+        for metric in ['ME', 'MAE', 'MSE', 'RMSE', 'SE']:
+            plot_quarterly_metrics(ifo_qoq_error_table_first, naive_qoq_first_eval_error_tables_dict, 
+                                
+                                metric_col=metric,
+                                scale_by_n=False, show=False, 
+                                n_bars=QoQ_eval_n_bars,
+                                save_path=first_eval_error_bars_path,
+                                save_name=f'Joint_{metric}{filter_str}{subset_str}.png')
+    
+
+
+    
+    
+    # ==================================================================================================
+    # RUN COMPONENT EVALUATION FOR EACH COMPONENT
+    # ==================================================================================================
+    
+    print(f"\nEvaluating all {len(component_names)} components ...\n")
+    
+    for comp_name in component_names:
+        
+        # Check if component data exists
+        has_ifo = comp_name in ifo_qoq_forecasts_components
+        has_naive = comp_name in component_naive_qoq_dfs_dict
+        has_eval = comp_name in component_first_eval_dict
+
+
+        # Console Printing for tracking
+        """
+        print(f"  {comp_name}: ifo={has_ifo}, naive={has_naive}, eval={has_eval}")
+        
+        if not (has_ifo and has_naive and has_eval):
+            print(f"    -> Skipping (missing data)")
+            continue
+        
+        print(f"    -> Evaluating component")
+        """
+        
+        # --------------------------------------------------------------------------------------------------
+        # Full time series (unfiltered)
+        # --------------------------------------------------------------------------------------------------
+        
+        qoq_error_evaluation_pipeline_components(
+            comp_name,
+            ifo_qoq_df_components=ifo_qoq_forecasts_components[comp_name],
+            naive_qoq_dict_components=component_naive_qoq_dfs_dict_filtered[comp_name],
+            component_eval_dict=component_first_eval_dict[comp_name],
+            subset_mode=False,
+            sd_filter_mode=False
+        )
+        
+        # --------------------------------------------------------------------------------------------------
+        # Full time series (filtered outliers if enabled)
+        # --------------------------------------------------------------------------------------------------
+        
+        if settings.run_component_filter:
+            print(f"    - Dropping outliers for {comp_name}...")
+            qoq_error_evaluation_pipeline_components(
+                comp_name,
+                ifo_qoq_df_components=ifo_qoq_forecasts_components[comp_name],
+                naive_qoq_dict=component_naive_qoq_dfs_dict_filtered[comp_name],
+                component_eval_dict=component_first_eval_dict[comp_name],
+                subset_mode=False,
+                sd_filter_mode=True
+            )
+        
+        # --------------------------------------------------------------------------------------------------
+        # Filtered time series (if run_component_filter is enabled)
+        # --------------------------------------------------------------------------------------------------
+        
+        if settings.run_component_filter:
+            print(f"    - Running filtered timeframe analysis for {comp_name}...")
+            qoq_error_evaluation_pipeline_components(
+                comp_name,
+                ifo_qoq_df_components=ifo_qoq_forecasts_components[comp_name],
+                naive_qoq_dict_components=component_naive_qoq_dfs_dict_filtered[comp_name],
+                component_eval_dict=component_first_eval_dict[comp_name],
+                subset_mode=True,
+                sd_filter_mode=False
+            )
+            
+            if settings.filter_outliers_within_eval_intervall:
+                print(f"    - Dropping outliers within filtered timeframe for {comp_name}...")
+                qoq_error_evaluation_pipeline_components(
+                    comp_name,
+                    ifo_qoq_df_components=ifo_qoq_forecasts_components[comp_name],
+                    naive_qoq_dict=component_naive_qoq_dfs_dict_filtered[comp_name],
+                    component_eval_dict=component_first_eval_dict[comp_name],
+                    subset_mode=True,
+                    sd_filter_mode=True
+                )
 
 
 
 # --------------------------------------------------------------------------------------------------
-print(f" \n Quarterly Evaluation Module complete! \n",f"Find Result Graphs in {graph_folder} and \nResult Tables in {table_folder}\n")
+print(f" \n Quarterly Evaluation Module complete! \n",f"Find Result Graphs in {graph_folder}n\nResult Tables in {table_folder} and \n Component Evaluation Results in {component_result_folder}\n")
 # --------------------------------------------------------------------------------------------------
 
 

@@ -847,6 +847,7 @@ NOTE: component-level date is already in qoq-format
 
 
 
+
 # =================================================================================================#
 #                           SIMULATED QOQ and YOY Realtime Data                                    #
 # =================================================================================================#
@@ -904,6 +905,51 @@ def fill_rowwise_left_on_na_after_start(df: pd.DataFrame) -> pd.DataFrame:
 
     return out
 
+
+def filter_invalid_forecast_dates(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove observations where the row date (target quarter) is in the same quarter 
+    or later than the column date (publication/forecast date).
+    
+    Assumes rows are sorted chronologically (target dates) and columns are sorted 
+    chronologically (publication dates). Both should be datetime objects or convertible to datetime.
+    
+    Also drops any rows and columns that are completely empty (all NaN) after filtering.
+    
+    Returns a filtered DataFrame with only valid forecast observations.
+    """
+    if df is None or df.empty:
+        return df
+    
+    df_filtered = df.copy()
+    
+    # Convert index and columns to datetime if needed
+    try:
+        row_dates = pd.to_datetime(df_filtered.index)
+    except Exception:
+        row_dates = df_filtered.index
+    
+    try:
+        col_dates = pd.to_datetime(df_filtered.columns)
+    except Exception:
+        col_dates = df_filtered.columns
+    
+    # Create a mask for invalid cells (row_date >= col_date)
+    # These are cells where the target quarter is the same or later than publication date
+    invalid_mask = pd.DataFrame(False, index=df_filtered.index, columns=df_filtered.columns)
+    
+    for i, row_date in enumerate(row_dates):
+        for j, col_date in enumerate(col_dates):
+            if row_date >= col_date:
+                invalid_mask.iloc[i, j] = True
+    
+    # Set invalid cells to NaN
+    df_filtered[invalid_mask] = np.nan
+    
+    # Drop completely empty rows and columns (all NaN)
+    df_filtered = df_filtered.dropna(how='all').dropna(how='all', axis=1)
+    
+    return df_filtered
 
 
 def build_first_release_series_rowwise(df_input: pd.DataFrame) -> pd.DataFrame:
@@ -999,6 +1045,10 @@ for f in excel_files:
         qoq_dfs[sheet] = df_filled
         yoy_dfs[sheet] = df_yoy
 
+    # --- filter invalid forecast dates for QoQ/YoY data (row_date must be later than col_date) ---
+    qoq_dfs = {sheet: filter_invalid_forecast_dates(df) for sheet, df in qoq_dfs.items()}
+    yoy_dfs = {sheet: filter_invalid_forecast_dates(df) for sheet, df in yoy_dfs.items()}
+
     # --- write QoQ workbook ---
     with pd.ExcelWriter(out_path_qoq, engine="openpyxl") as writer_qoq:
         for sheet, df_filled in qoq_dfs.items():
@@ -1018,6 +1068,10 @@ for f in excel_files:
     else:
         df_qoq_combined = pd.concat(qoq_dfs, names=["sheet", "date"])
         df_yoy_combined = pd.concat(yoy_dfs, names=["sheet", "date"])
+
+    # --- filter invalid forecast dates for evaluation series ---
+    df_qoq_combined = filter_invalid_forecast_dates(df_qoq_combined)
+    df_yoy_combined = filter_invalid_forecast_dates(df_yoy_combined)
 
     # --- evaluation series (first-release) ---
     first_release_qoq_df = build_first_release_series_rowwise(df_qoq_combined)
