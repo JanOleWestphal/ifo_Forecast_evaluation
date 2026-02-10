@@ -8,6 +8,7 @@
 # ==================================================================================================
 # --------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
 
 # Import built-ins
 import importlib
@@ -16,6 +17,8 @@ import sys
 import os
 import glob
 from datetime import datetime, date
+from typing import Union, Dict, Optional, Mapping,  Iterable, List, Sequence
+
 
 
 # Import libraries
@@ -54,6 +57,105 @@ def folder_clear(folder_path):
 #                                       Data Processing                                            #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
+
+
+# ==================================================================================================
+# Flexible df merger
+# ==================================================================================================
+
+def merge_quarterly_dfs_dropna(
+    dfs: Sequence[pd.DataFrame],
+    col_names: Sequence[str],
+    *,
+    quarter: str = "Q",            # "Q" for quarter-end, "QS" for quarter-start
+    join: str = "outer",           # "outer" (union) or "inner" (intersection)
+    dropna: bool = True,
+    tz_aware_ok: bool = True,
+) -> pd.DataFrame:
+    """
+    Merge multiple n×1 time series into a single DataFrame on a common quarterly index,
+    enforcing a common quarterly date standard for ALL inputs.
+
+    What this does
+    -------------
+    1) Converts each input index to a quarterly PeriodIndex (freq='Q').
+    2) Converts that PeriodIndex back to a DatetimeIndex using a common standard:
+       - quarter="Q"  -> quarter-end timestamps (e.g. 2024-03-31, 2024-06-30, ...)
+       - quarter="QS" -> quarter-start timestamps (e.g. 2024-01-01, 2024-04-01, ...)
+    3) Renames each series to the provided `col_names`.
+    4) Concatenates all series column-wise and optionally drops any row with missing data.
+
+    Parameters
+    ----------
+    dfs : sequence of pandas.DataFrame
+        Each element must be n×1 and have an index convertible to datetime or period.
+    col_names : sequence of str
+        Column names for the merged output. Must match len(dfs).
+    quarter : {"Q", "QS"}, default="Q"
+        Quarterly timestamp standard to enforce:
+        - "Q": quarter-end
+        - "QS": quarter-start
+    join : {"outer", "inner"}, default="outer"
+        How to align indices when concatenating:
+        - "outer": union of quarters across series
+        - "inner": intersection of quarters across series
+    dropna : bool, default=True
+        If True, drop all rows that have at least one missing value after merging.
+    tz_aware_ok : bool, default=True
+        If True, timezone-aware DatetimeIndex inputs are converted to naive timestamps
+        (timezone removed) before quarterly conversion.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Merged DataFrame with a common quarterly DatetimeIndex and named columns.
+    """
+    if len(dfs) != len(col_names):
+        raise ValueError("dfs and col_names must have the same length.")
+
+    if quarter not in {"Q", "QS"}:
+        raise ValueError("quarter must be either 'Q' (quarter-end) or 'QS' (quarter-start).")
+
+    # how parameter for to_timestamp
+    how = "end" if quarter == "Q" else "start"
+
+    series_list = []
+    for df, name in zip(dfs, col_names):
+        if df.shape[1] != 1:
+            raise ValueError("Each DataFrame must be n×1 (exactly one column).")
+
+        out = df.copy()
+
+        # --- convert index to datetime/period safely ---
+        if isinstance(out.index, pd.PeriodIndex):
+            # Ensure quarterly periods
+            periods = out.index.asfreq("Q")
+        else:
+            # DatetimeIndex or other -> coerce to datetime
+            dt = pd.to_datetime(out.index)
+
+            # If timezone-aware, optionally drop timezone info
+            if hasattr(dt, "tz") and dt.tz is not None:
+                if not tz_aware_ok:
+                    raise ValueError("Timezone-aware DatetimeIndex found; set tz_aware_ok=True to allow.")
+                dt = dt.tz_convert(None)
+
+            periods = dt.to_period("Q")
+
+        # --- enforce common quarterly timestamp standard ---
+        out.index = periods.to_timestamp(how=how)
+
+        # rename column
+        out.columns = [name]
+        series_list.append(out)
+
+    merged = pd.concat(series_list, axis=1, join=join)
+
+    if dropna:
+        merged = merged.dropna(how="any")
+
+    return merged
+
 
 
 
