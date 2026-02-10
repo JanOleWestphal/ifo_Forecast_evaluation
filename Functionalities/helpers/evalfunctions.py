@@ -38,11 +38,15 @@ from itertools import product
 from typing import Union, Dict, Optional
 
 
+
+
 # Import libraries
 import requests
 import pandas as pd
 #from pandasgui import show
 import numpy as np
+from math import sqrt
+from scipy.stats import norm
 
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -572,6 +576,186 @@ def get_qoq_error_statistics_table(error_by_horizon, release_name=None, save_pat
 
 
 
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                       STATISTICAL TESTS                                          #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Diebold-Mariano
+# --------------------------------------------------------------------------------------------------
+
+def dm_test(e1, e2, h=1, loss="mse", alternative="two-sided", hln=True):
+    """
+    Diebold–Mariano (DM) test for equal predictive accuracy between two forecasts.
+
+    This function implements the Diebold–Mariano test using a loss differential
+    (MSE or MAE) and a HAC (Newey–West–type) variance estimator to account for
+    autocorrelation in multi-step-ahead forecast errors.
+
+    Parameters
+    ----------
+    e1 : array-like
+        Forecast errors from model 1 (actual minus forecast).
+    e2 : array-like
+        Forecast errors from model 2 (actual minus forecast).
+    h : int, default=1
+        Forecast horizon. For h > 1, the loss differential is assumed to be
+        autocorrelated up to lag h-1.
+    loss : {"mse", "mae"}, default="mse"
+        Loss function used to form the loss differential:
+        - "mse": squared error loss
+        - "mae": absolute error loss
+    alternative : {"two-sided", "less", "greater"}, default="two-sided"
+        Alternative hypothesis:
+        - "two-sided": E[d] != 0
+        - "less":      E[d] < 0  (model 1 has lower expected loss)
+        - "greater":   E[d] > 0  (model 2 has lower expected loss)
+    hln : bool, default=True
+        Whether to apply the Harvey–Leybourne–Newbold small-sample correction
+        (recommended for h > 1).
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - "stat":   DM test statistic
+        - "pvalue": p-value under the chosen alternative
+        - "mean_d": sample mean of the loss differential
+        - "T":      number of forecast observations
+        - "h":      forecast horizon
+    """
+
+    e1 = np.asarray(e1, dtype=float)
+    e2 = np.asarray(e2, dtype=float)
+    assert e1.shape == e2.shape
+    T = len(e1)
+
+    # Construct loss differential d_t
+    if loss.lower() == "mse":
+        d = e1**2 - e2**2
+    elif loss.lower() == "mae":
+        d = np.abs(e1) - np.abs(e2)
+    else:
+        raise ValueError("loss must be 'mse' or 'mae'")
+
+    dbar = d.mean()
+
+    # Sample autocovariance of d_t at lag 'lag'
+    def autocov(x, lag):
+        x0 = x - x.mean()
+        if lag == 0:
+            return np.dot(x0, x0) / T
+        return np.dot(x0[lag:], x0[:-lag]) / T
+
+    # HAC variance of the sample mean of d_t
+    gamma0 = autocov(d, 0)
+    var_dbar = gamma0
+    for lag in range(1, h):
+        var_dbar += 2 * autocov(d, lag)
+    var_dbar /= T
+
+    dm = dbar / sqrt(var_dbar)
+
+    # Harvey–Leybourne–Newbold small-sample correction
+    if hln and h > 1:
+        adj = sqrt((T + 1 - 2*h + (h*(h-1))/T) / T)
+        dm *= adj
+
+    # p-value computation
+    if alternative == "two-sided":
+        p = 2 * (1 - norm.cdf(abs(dm)))
+    elif alternative == "less":
+        p = norm.cdf(dm)
+    elif alternative == "greater":
+        p = 1 - norm.cdf(dm)
+    else:
+        raise ValueError("alternative must be 'two-sided', 'less', or 'greater'")
+
+    return {"stat": dm, "pvalue": p, "mean_d": dbar, "T": T, "h": h}
+
+
+
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Clark-West
+# --------------------------------------------------------------------------------------------------
+
+
+def cw_test(y, yhat1, yhat2, h=1):
+    """
+    Clark–West (CW) test for equal predictive accuracy of nested forecast models.
+
+    This test adjusts the standard MSPE comparison to account for the bias that
+    arises when comparing a smaller (benchmark) model to a larger nested model.
+    It is appropriate only when model 2 nests model 1.
+
+    The test is typically conducted as a one-sided test with the alternative
+    hypothesis that the larger (nested) model has lower MSPE.
+
+    Parameters
+    ----------
+    y : array-like
+        Realized values of the target variable.
+    yhat1 : array-like
+        Forecasts from the benchmark (smaller) model.
+    yhat2 : array-like
+        Forecasts from the nested (larger) model.
+    h : int, default=1
+        Forecast horizon. For h > 1, HAC variance estimation is used with
+        truncation lag h-1.
+
+    Returns
+    -------
+    dict
+        Dictionary containing:
+        - "stat":              CW test statistic
+        - "pvalue_one_sided":  one-sided p-value for the null of no improvement
+        - "mean_f":            sample mean of the CW-adjusted loss differential
+        - "T":                 number of forecast observations
+        - "h":                 forecast horizon
+    """
+
+    # Reformat and check shapes
+    y = np.asarray(y, dtype=float)
+    yhat1 = np.asarray(yhat1, dtype=float)
+    yhat2 = np.asarray(yhat2, dtype=float)
+    assert y.shape == yhat1.shape == yhat2.shape
+    T = len(y)
+
+    # Forecast errors
+    e1 = y - yhat1
+    e2 = y - yhat2
+
+    # CW-adjusted loss differential f_t
+    f = e1**2 - e2**2 + (yhat1 - yhat2)**2
+    fbar = f.mean()
+
+    # Sample autocovariance of f_t
+    def autocov(x, lag):
+        x0 = x - x.mean()
+        if lag == 0:
+            return np.dot(x0, x0) / T
+        return np.dot(x0[lag:], x0[:-lag]) / T
+
+    # HAC variance of the sample mean of f_t
+    gamma0 = autocov(f, 0)
+    var_fbar = gamma0
+    for lag in range(1, h):
+        var_fbar += 2 * autocov(f, lag)
+    var_fbar /= T
+
+    cw = fbar / sqrt(var_fbar)
+
+    # One-sided p-value: H1 = nested model improves MSPE
+    p_one_sided = 1 - norm.cdf(cw)
+
+    return {"stat": cw, "pvalue_one_sided": p_one_sided, "mean_f": fbar, "T": T, "h": h}
 
 
 
@@ -1330,3 +1514,26 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
     plt.close()
     
     return fig, ax
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
