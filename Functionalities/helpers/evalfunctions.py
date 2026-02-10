@@ -804,6 +804,12 @@ def plot_forecast_timeseries(*args, df_eval=None, title_prefix=None,
     figures = {}
 
 
+    ## Ensure save path exists if saving is requested
+    if save_path is not None:
+        os.makedirs(save_path, exist_ok=True)
+
+
+
     ## ---------------------------------------------------------------------------
     ## Plot 1: For each input DataFrame, plot all Q0-Q9 against evaluation
     ## ---------------------------------------------------------------------------
