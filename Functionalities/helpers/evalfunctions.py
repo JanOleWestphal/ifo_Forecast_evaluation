@@ -26,34 +26,40 @@
 #                                           SETUP
 # ==================================================================================================
 
-# Import built-ins
+from __future__ import annotations
+
+# ======================================
+# Built-ins / standard library
+# ======================================
+import glob
 import importlib
+import math
+import os
+import re
 import subprocess
 import sys
-import os
-import glob
-import re
-from datetime import datetime, date
+from datetime import date, datetime
 from itertools import product
-from typing import Union, Dict, Optional
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
+# ======================================
+# Third-party libraries
+# ======================================
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 
-
-
-# Import libraries
-import requests
-import pandas as pd
-#from pandasgui import show
 import numpy as np
-from math import sqrt
+import pandas as pd
+import requests
+
 from scipy.stats import norm
 
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import matplotlib.cm as cm
-
-
+# ======================================
+# Project imports
+# ======================================
 import ifo_forecast_evaluation_settings as settings
+
 
 
 
@@ -756,6 +762,216 @@ def cw_test(y, yhat1, yhat2, h=1):
     p_one_sided = 1 - norm.cdf(cw)
 
     return {"stat": cw, "pvalue_one_sided": p_one_sided, "mean_f": fbar, "T": T, "h": h}
+
+
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Output Tables for DM and CW tests
+# --------------------------------------------------------------------------------------------------
+
+def results_dicts_to_latex(
+    results: Union[Mapping[str, Mapping[str, Any]], Sequence[Mapping[str, Any]]],
+    *,
+    # --- flexible annotations / labels ---
+    row_labels: Optional[Sequence[str]] = None,
+    row_keys: Optional[Sequence[str]] = None,
+    label_key: str = "label",
+    # --- selecting + ordering metrics from each dict ---
+    include: Optional[Sequence[str]] = None,
+    rename: Optional[Mapping[str, str]] = None,
+    sort_rows_by: Optional[str] = None,
+    # --- formatting ---
+    digits: int = 3,
+    sci_threshold: float = 1e6,
+    nan_as: str = "",
+    # --- LaTeX table controls ---
+    caption: Optional[str] = None,
+    latex_label: Optional[str] = None,
+    booktabs: bool = True,
+    align: Optional[str] = None,
+    escape_underscores: bool = True,
+    # --- optional “double header line” compact style ---
+    double_header: bool = True,
+    # --- output ---
+    save_path: Optional[str] = None,
+) -> str:
+    """
+    Combine a flexible number of result dictionaries (e.g. DM/CW outputs) into a LaTeX table
+    and optionally save it to disk.
+
+    Parameters
+    ----------
+    results
+        Either:
+        (A) dict-of-dicts: {row_name: result_dict, ...}
+        (B) list/tuple of result_dicts.
+    save_path
+        If provided, the LaTeX table is written to this path (should end in '.tex').
+
+    All other parameters control formatting, selection, and annotation of the table.
+
+    Returns
+    -------
+    str
+        LaTeX table as a string.
+    """
+
+    def _is_nan(x: Any) -> bool:
+        try:
+            return x is None or (isinstance(x, float) and math.isnan(x))
+        except Exception:
+            return x is None
+
+    def _fmt(x: Any) -> str:
+        if _is_nan(x):
+            return nan_as
+        if isinstance(x, (int,)) and not isinstance(x, bool):
+            return str(x)
+        if isinstance(x, (float,)) and not isinstance(x, bool):
+            ax = abs(x)
+            if ax != 0 and ax >= sci_threshold:
+                return f"{x:.{digits}e}"
+            return f"{x:.{digits}f}"
+        return str(x)
+
+    def _esc(s: str) -> str:
+        return s.replace("_", "\\_") if escape_underscores else s
+
+    def _header_wrap(s: str) -> str:
+        if not double_header:
+            return _esc(s)
+        if "_" in s:
+            a, b = s.split("_", 1)
+            return _esc(a) + r"\\ " + _esc(b)
+        return _esc(s)
+
+    # --- normalize input ---
+    rows: List[Tuple[str, Mapping[str, Any]]] = []
+
+    if isinstance(results, Mapping):
+        items = list(results.items())
+        if row_labels is None:
+            rows = [(str(k), v) for k, v in items]
+        else:
+            if len(row_labels) != len(items):
+                raise ValueError("row_labels length must match results.")
+            rows = [(str(lbl), v) for lbl, (_, v) in zip(row_labels, items)]
+    else:
+        dicts = list(results)
+        if row_labels is not None:
+            if len(row_labels) != len(dicts):
+                raise ValueError("row_labels length must match results.")
+            rows = [(str(lbl), d) for lbl, d in zip(row_labels, dicts)]
+        else:
+            rows = [(str(d.get(label_key, f"Row {i+1}")), d) for i, d in enumerate(dicts)]
+
+    # --- infer columns ---
+    if row_keys is None:
+        key_union = set().union(*(d.keys() for _, d in rows))
+        preferred = ["stat", "pvalue", "pvalue_one_sided", "mean_d", "mean_f", "T", "h"]
+        row_keys = [k for k in preferred if k in key_union] + \
+                   sorted(k for k in key_union if k not in preferred)
+
+    if include is not None:
+        row_keys = [k for k in row_keys if k in set(include)]
+
+    if rename is None:
+        rename = {}
+
+    # --- sorting ---
+    if sort_rows_by is not None:
+        rows = sorted(
+            rows,
+            key=lambda x: (
+                _is_nan(x[1].get(sort_rows_by)),
+                x[1].get(sort_rows_by, float("inf"))
+            )
+        )
+
+    # --- LaTeX assembly ---
+    headers = [""] + [rename.get(k, k) for k in row_keys]
+
+    if align is None:
+        align = "l" + "r" * len(row_keys)
+
+    if booktabs:
+        top, mid, bot = r"\toprule", r"\midrule", r"\bottomrule"
+    else:
+        top = mid = bot = r"\hline"
+
+    lines = [
+        r"\begin{table}[!htbp]",
+        r"\centering",
+    ]
+
+    if caption is not None:
+        lines.append(rf"\caption{{{_esc(caption)}}}")
+    if latex_label is not None:
+        lines.append(rf"\label{{{latex_label}}}")
+
+    lines.extend([
+        rf"\begin{{tabular}}{{{align}}}",
+        top,
+        " & ".join([""] + [_header_wrap(h) for h in headers[1:]]) + r" \\",
+        mid
+    ])
+
+    for lbl, d in rows:
+        row = [_esc(lbl)] + [_fmt(d.get(k)) for k in row_keys]
+        lines.append(" & ".join(row) + r" \\")
+
+    lines.extend([
+        bot,
+        r"\end{tabular}",
+        r"\end{table}"
+    ])
+
+    latex_str = "\n".join(lines)
+
+    # --- write to disk if requested ---
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(latex_str)
+
+    return latex_str
+
+
+
+
+
+
+
+
+
+
+
+
+# --------------------------
+# Example usage
+# --------------------------
+# dm_res = dm_test(e1, e2, h=4, loss="mse")
+# cw_res = cw_test(y, yhat1, yhat2, h=4)
+#
+# table = results_dicts_to_latex(
+#     [dm_res, cw_res],
+#     row_labels=["DM: ModelA vs ModelB", "CW: Bench vs Nested"],
+#     include=["stat", "pvalue", "pvalue_one_sided", "T", "h"],
+#     rename={"stat": "TestStat", "pvalue": "p-value", "pvalue_one_sided": "p-value_one_sided"},
+#     caption="Forecast accuracy tests",
+#     latex_label="tab:dm_cw",
+#     digits=3,
+#     double_header=True
+# )
+# print(table)
+
+
+
+
+
+
 
 
 
