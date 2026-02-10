@@ -581,6 +581,19 @@ ifoCAst_Qm1_Q0_Q1_filtered = filter_by_forecast_dates(ifoCAst_Qm1_Q0_Q1_full)
 
 
 
+# ==================================================================================================
+# SIDETASK: extract the nowcast series and save it, to be used in the ifoCAST longerm evaluation
+# ==================================================================================================
+
+# Select col and rename df
+ifoCAST_nowcast_series = ifoCAst_Qm1_Q0_Q1_filtered[['Q0']].copy()
+ifoCAST_nowcast_series.index.name = "Date"
+ifoCAST_nowcast_series.rename(columns={'Q0': 'qoq_growth'}, inplace=True)
+
+#show(ifoCAST_nowcast_series)
+
+# Save it
+ifoCAST_nowcast_series.to_excel(os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_live_nowcast_series.xlsx'))
 
 
 

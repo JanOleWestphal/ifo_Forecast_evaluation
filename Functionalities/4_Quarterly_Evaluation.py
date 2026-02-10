@@ -15,7 +15,7 @@
 """
 Remaining Bugs/Issues:
 - ifo errors in the nowcast are faulty at least from Q2-2020 onwards, reasons unclear
-- filter for naive forecasts with unavailable horizons to the ifo forecasts is faulty, needs to be ammended
+- filter for naive forecasts with unavailable horizons to the ifo forecasts is faulty, needs to be ammended, not a first order concern
 
 - Dynamic naming of graphs should be improved
 """
@@ -862,7 +862,7 @@ if settings.evaluate_forecast_components:
 
 
     """
-    NOTE: this code is both faulty ammend to filter for naive forecast horizons unavailable to the ifo forecast
+    NOTE: this code is faulty - ammend to filter for naive forecast horizons unavailable to the ifo forecast
 
     def filter_naive_for_ifo_components(ifo_components_dict, naive_components_dict):
 
@@ -1146,7 +1146,7 @@ if settings.evaluate_forecast_components:
         qoq_error_evaluation_pipeline_components(
             comp_name,
             ifo_qoq_df_components=ifo_qoq_forecasts_components[comp_name],
-            naive_qoq_dict_components=component_naive_qoq_dfs_dict_filtered[comp_name],
+            naive_qoq_dict_components=component_naive_qoq_dfs_dict[comp_name],
             component_eval_dict=component_first_eval_dict[comp_name],
             subset_mode=False,
             sd_filter_mode=False
@@ -1161,7 +1161,7 @@ if settings.evaluate_forecast_components:
             qoq_error_evaluation_pipeline_components(
                 comp_name,
                 ifo_qoq_df_components=ifo_qoq_forecasts_components[comp_name],
-                naive_qoq_dict=component_naive_qoq_dfs_dict_filtered[comp_name],
+                naive_qoq_dict=component_naive_qoq_dfs_dict[comp_name],
                 component_eval_dict=component_first_eval_dict[comp_name],
                 subset_mode=False,
                 sd_filter_mode=True
@@ -1176,7 +1176,7 @@ if settings.evaluate_forecast_components:
             qoq_error_evaluation_pipeline_components(
                 comp_name,
                 ifo_qoq_df_components=ifo_qoq_forecasts_components[comp_name],
-                naive_qoq_dict_components=component_naive_qoq_dfs_dict_filtered[comp_name],
+                naive_qoq_dict_components=component_naive_qoq_dfs_dict[comp_name],
                 component_eval_dict=component_first_eval_dict[comp_name],
                 subset_mode=True,
                 sd_filter_mode=False
@@ -1187,7 +1187,7 @@ if settings.evaluate_forecast_components:
                 qoq_error_evaluation_pipeline_components(
                     comp_name,
                     ifo_qoq_df_components=ifo_qoq_forecasts_components[comp_name],
-                    naive_qoq_dict=component_naive_qoq_dfs_dict_filtered[comp_name],
+                    naive_qoq_dict=component_naive_qoq_dfs_dict[comp_name],
                     component_eval_dict=component_first_eval_dict[comp_name],
                     subset_mode=True,
                     sd_filter_mode=True
