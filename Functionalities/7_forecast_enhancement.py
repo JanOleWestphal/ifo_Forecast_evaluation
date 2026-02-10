@@ -53,7 +53,7 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 
 from itertools import product
-from typing import Union, Dict, Optional
+from typing import Union, Dict, Optional, Mapping
 
 
 # Import libraries
@@ -166,6 +166,7 @@ qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
 
 ## First Releases
 qoq_first_eval = pd.read_excel(qoq_path_first, index_col=0)
+#show(qoq_first_eval)
 
 
 # -------------------------------------------------------------------------------------------------#
@@ -217,7 +218,8 @@ ifoCAST_nowcasts_full_path = os.path.join(
     wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_nowcasts_full.xlsx')
 
 # Load 
-ifoCAST_nowcast = pd.read_excel(file_path_ifo_qoq, index_col=0)
+ifoCAST_nowcast = pd.read_excel(ifoCAST_nowcasts_full_path , index_col=0)
+#show(ifoCAST_nowcast)
 
 # -------------------------------------------------------------------------------------------------#
 # Load AR2-nowcasts
@@ -246,8 +248,6 @@ AR_nowcasts = nowcast_builder(df_ar2)
 
 
 
-
-
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                                          PROCESS DATA                                            #
@@ -259,8 +259,13 @@ AR_nowcasts = nowcast_builder(df_ar2)
 #                                       Merge to joint df                                          #
 # =================================================================================================#
 
+## Call merge_quarterly_dfs_dropna() from helperfunctions
+joint_nowcast_df = merge_quarterly_dfs_dropna(
+    dfs= [qoq_first_eval, ifo_judgemental_nowcasts, ifoCAST_nowcast, AR_nowcasts ],
+    col_names=['realized', 'judgemental', 'naiveAR2', 'ifoCast']
+)
 
-
+#show(joint_nowcast_df)
 
 
 
