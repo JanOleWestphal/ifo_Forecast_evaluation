@@ -585,61 +585,45 @@ def retrieve_qoq_predictions(qoq_forecast_df, model, average_horizon=None, AR_or
     # Convert columns to datetime if they aren't already
     columns_datetime = pd.to_datetime(naive_qoq_forecasts.columns)
 
-    # The forecast df has an integer index (forecast horizons: 0, 1, 2, ...)
-    # and columns representing forecast release dates.
-    # We need to reshape it so that rows represent time periods and columns represent release dates
-    # with each column's forecasts shifted to start from the quarter after the release date.
-    
-    # Get min and max column dates
-    min_col_date = columns_datetime.min()
-    max_col_date = columns_datetime.max()
-    
-    # Create a proper quarterly index
-    # Need to start from before the earliest column and extend to after the latest forecast
-    # The latest forecast will be max_col_date + forecast_horizon_len quarters
-    forecast_horizon_len = len(naive_qoq_forecasts)
-    
-    # Create end date: latest column + number of forecast periods
-    end_date = max_col_date + pd.DateOffset(months=3*forecast_horizon_len)
-    
-    # Create index spanning from a bit before min_col_date to well past end_date
-    # Using 'QS' frequency (quarter start) for consistency
-    new_index = pd.date_range(start=min_col_date, end=end_date, freq='QS')
-    
-    # Create a new dataframe with the proper datetime index
-    result_df = pd.DataFrame(index=new_index, columns=columns_datetime.to_period('Q').to_timestamp())
-    
-    # For each forecast release date (column), place the forecasts in the right rows
-    for col_idx, col_date in enumerate(columns_datetime):
-        col_date_quarterly = pd.to_datetime(col_date).to_period('Q').to_timestamp()
-        # Find the index position where this column's forecasts should start
-        # The forecasts start from the quarter after the column date
-        # Find the quarterly date that comes after col_date
-        col_quarter_end = pd.to_datetime(col_date).to_period('Q').to_timestamp()
-        next_quarter_start = col_quarter_end + pd.DateOffset(months=3)
-        
-        # Find the position in new_index
-        # Use searchsorted to find the nearest position
-        start_idx = new_index.searchsorted(next_quarter_start)
-        if start_idx < len(new_index) and new_index[start_idx] < next_quarter_start:
-            start_idx += 1
-        
-        # Copy the forecast values to the result dataframe
-        forecast_values = naive_qoq_forecasts.iloc[:, col_idx].values
-        end_idx = min(start_idx + len(forecast_values), len(new_index))
-        actual_len = end_idx - start_idx
-        
-        result_df.iloc[start_idx:end_idx, col_idx] = forecast_values[:actual_len]
-    
-    # Drop empty rows (rows with all NaN)
-    result_df = result_df.dropna(how='all')
-    
-    # Drop empty columns (columns with all NaN)
-    result_df = result_df.dropna(axis=1, how='all')
-    
-    naive_qoq_forecasts = result_df
+    # Ensure the DataFrame index is datetime first
+    naive_qoq_forecasts.index = pd.to_datetime(naive_qoq_forecasts.index, errors='coerce')
+
+    # Drop rows where coercion failed (e.g. if index was pure integers)
+    naive_qoq_forecasts = naive_qoq_forecasts[naive_qoq_forecasts.index.notna()]
+
+    # Now extend the index safely
+    columns_datetime = pd.to_datetime(naive_qoq_forecasts.columns)
+    start_date = columns_datetime.min()
+    max_shift_needed = len(columns_datetime)
+    total_periods_needed = len(naive_qoq_forecasts) + max_shift_needed
+
+    new_index = pd.date_range(start=start_date, periods=total_periods_needed, freq='3ME')
+
+    # Safe union + sorting
+    naive_qoq_forecasts = naive_qoq_forecasts.reindex(
+    index=new_index.union(naive_qoq_forecasts.index)
+    ).sort_index()
 
     #show(naive_qoq_forecasts)
+
+    # Match on quarterly basis: Ensure index and columns are datetime (quarterly aligned)
+    naive_qoq_forecasts.index = pd.to_datetime(naive_qoq_forecasts.index).to_period('Q').to_timestamp()
+    naive_qoq_forecasts.columns = pd.to_datetime(naive_qoq_forecasts.columns).to_period('Q').to_timestamp()
+
+    # Shift each column so that its first non-NA value aligns with its column date
+    for col in naive_qoq_forecasts.columns:
+        col_date = pd.to_datetime(col).to_period('Q').to_timestamp()
+
+        # Check if column date exists in index
+        if col_date in naive_qoq_forecasts.index:
+            target_row = naive_qoq_forecasts.index.get_loc(col_date)
+            naive_qoq_forecasts[col] = naive_qoq_forecasts[col].shift(target_row)
+
+    # Drop empty rows
+    naive_qoq_forecasts = naive_qoq_forecasts.dropna(how='all')
+
+    #show(naive_qoq_forecasts)
+
 
 
 

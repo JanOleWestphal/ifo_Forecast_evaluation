@@ -4,7 +4,7 @@
 # Title:        Forecast Enhancement Analysis Module
 #
 # Author:       Jan Ole Westphal
-# Date:         2025-11
+# Date:         2025-12
 #
 # Description:  Subprogram to experiment on how to enhance the ifo Forecasts.
 # 
@@ -14,8 +14,15 @@
 
 
 """
-Ideas for further anaylsis:
-- 
+- Simple baseline: combine ifo judgemental and ifoCAST / ifo judgemental and AR2 with 0.5 weights
+- Run optimal weight search with two setups: 
+            - train before Covid hits, evaluate after + non-diconnected full series
+            - eval starting in 2021
+
+- Plot ideal weights
+- Do three-way combination exercise, plot ideal weights in 3D
+
+Get error tables, run tests on relative performance
 """
 
 
@@ -151,6 +158,87 @@ for folder in [table_folder, graph_folder]:
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
+# -------------------------------------------------------------------------------------------------#
+# Load realized GDP-series
+# -------------------------------------------------------------------------------------------------#
+eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
+qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
+
+## First Releases
+qoq_first_eval = pd.read_excel(qoq_path_first, index_col=0)
+
+
+# -------------------------------------------------------------------------------------------------#
+# Load ifo qoq nowcasts
+# -------------------------------------------------------------------------------------------------#
+# Path
+file_path_ifo_qoq = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_series',
+                                  'ifo_qoq_forecasts.xlsx' )
+
+# Load 
+ifo_qoq_forecasts = pd.read_excel(file_path_ifo_qoq, index_col=0)
+
+# Build ifo judgemental nowcasts by matching row/column on quarterly level.
+def nowcast_builder(df):
+    ifo_rows_quarter = pd.to_datetime(df.index).to_period('Q')
+    ifo_cols_quarter = pd.to_datetime(df.columns).to_period('Q')
+
+    dtx1_records = []
+    for col, col_quarter in zip(df.columns, ifo_cols_quarter):
+        matching_rows = np.where(ifo_rows_quarter == col_quarter)[0]
+        if len(matching_rows) != 1:
+            raise ValueError(
+                f"Expected exactly one quarterly row match for column {col} ({col_quarter}), "
+                f"found {len(matching_rows)}."
+            )
+
+        row_label = df.index[matching_rows[0]]
+        dtx1_records.append(
+            {
+                'column_date': col,
+                'matched_row_date': row_label,
+                'ifo_judgemental_nowcast': df.loc[row_label, col]
+            }
+        )
+
+    dtx1 = pd.DataFrame(dtx1_records).set_index('column_date')
+    df_out = dtx1[['ifo_judgemental_nowcast']].copy()
+
+    return df_out
+
+ifo_judgemental_nowcasts = nowcast_builder(ifo_qoq_forecasts)
+#show(ifo_judgemental_nowcasts)
+
+
+# -------------------------------------------------------------------------------------------------#
+# Load ifoCAST nowcasts
+# -------------------------------------------------------------------------------------------------#
+ifoCAST_nowcasts_full_path = os.path.join(
+    wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_nowcasts_full.xlsx')
+
+# Load 
+ifoCAST_nowcast = pd.read_excel(file_path_ifo_qoq, index_col=0)
+
+# -------------------------------------------------------------------------------------------------#
+# Load AR2-nowcasts
+# -------------------------------------------------------------------------------------------------#
+# Paths to the folders containing the Excel files
+file_path_naive_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_QoQ_Forecast_Tables')
+
+# Load all QoQ naive forecast Excel files into dictionary
+naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naive_qoq_forecasts_')
+
+# Get the AR2 model
+matches = [k for k in naive_qoq_dfs_dict if "AR2" in k]
+if not matches:
+    raise KeyError("No entry containing 'AR2' found in naive_qoq_dfs_dict. Check Setting file and run Naive Forecaster Module")
+
+df_ar2 = naive_qoq_dfs_dict[matches[0]]
+#show(df_ar2)
+
+# Get Nowcasts
+AR_nowcasts = nowcast_builder(df_ar2)
+#show(AR_nowcasts)
 
 
 
@@ -160,7 +248,16 @@ for folder in [table_folder, graph_folder]:
 
 
 
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                          PROCESS DATA                                            #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
 
+
+# =================================================================================================#
+#                                       Merge to joint df                                          #
+# =================================================================================================#
 
 
 
@@ -178,7 +275,26 @@ for folder in [table_folder, graph_folder]:
 # -------------------------------------------------------------------------------------------------#
 
 
+# =================================================================================================#
+#                                   SIMPLE LINEAR COMBINATIONS                                     #
+# =================================================================================================#
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# =================================================================================================#
+#                                   OPTIMIZED LINEAR COMBINATIONS                                  #
+# =================================================================================================#
 
 
 
@@ -188,5 +304,29 @@ for folder in [table_folder, graph_folder]:
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                                        Visualize Results                                         #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                        End of Code                                               #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#

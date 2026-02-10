@@ -5,7 +5,7 @@
 # Title:        ifo Forecast Evaluation
 #
 # Author:       Jan Ole Westphal, building on previous work by Timo Wollmershäuser and others
-# Date:         2025-05
+# Date:         2026-02
 #
 # Description:  Execute this file to conduct the ifo Forecast Evaluation.
 #               Set all settings in the Settings file. 

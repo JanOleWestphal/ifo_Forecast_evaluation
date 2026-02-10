@@ -166,7 +166,62 @@ print("\n Loading Evaluation Data ...  \n")
 # Load long-term ifoCAST data -> Vintage and life nowcast series
 # --------------------------------------------------------------------------------------------------
 
-## HELPER: Restrucutre the nx1 data into a diagonal forecast matrix with the usual dt x dt structure 
+
+## Vintage series
+# Path
+ifoCast_longterm_filepath = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST',
+                                  'ifoCast_longterm_Q42019.xlsx' )
+# Load Excel
+ifoCAST_longterm = pd.read_excel(ifoCast_longterm_filepath)
+
+
+
+## Live nowcast series
+# Path
+ifoCast_live_filepath = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_live_nowcast_series.xlsx')
+# Load Excel
+ifoCAST_live_nowcast_series = pd.read_excel(ifoCast_live_filepath, index_col=0)
+
+
+## Append the two cols and save for later analysis
+ifoCAST_longterm_base = ifoCAST_longterm.copy()
+ifoCAST_live_base = ifoCAST_live_nowcast_series.copy()
+
+def _ensure_date_index(df):
+    if 'Date' in df.columns:
+        out = df.copy()
+        out['Date'] = pd.to_datetime(out['Date'])
+        return out.set_index('Date')
+    out = df.copy()
+    out.index = pd.to_datetime(out.index)
+    return out
+
+ifoCAST_longterm_idx = _ensure_date_index(ifoCAST_longterm_base)
+ifoCAST_live_idx = _ensure_date_index(ifoCAST_live_base)
+
+# Collapse into a single column (no overlap expected per row)
+longterm_col = ifoCAST_longterm_idx.columns[0]
+live_col = ifoCAST_live_idx.columns[0]
+ifoCAST_nowcasts_full = pd.DataFrame(
+    {longterm_col: ifoCAST_longterm_idx[longterm_col].combine_first(ifoCAST_live_idx[live_col])}
+)
+#show(ifoCAST_nowcasts_full)
+
+ifoCAST_nowcasts_full_path = os.path.join(
+    wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_nowcasts_full.xlsx'
+)
+ifoCAST_nowcasts_full.to_excel(ifoCAST_nowcasts_full_path)
+
+
+
+
+
+
+# --------------------------------------------------------------------------------------------------
+# Restrucutre and Merge vintage and live-forecasts
+# --------------------------------------------------------------------------------------------------
+
+# HELPER: Restrucutre the nx1 data into a diagonal forecast matrix with the usual dt x dt structure 
 def restructure_ifoCAST_longterm(ifoCAST_longterm):
 
     # Ensure Date column exists even if it was saved as index
@@ -194,24 +249,10 @@ def restructure_ifoCAST_longterm(ifoCAST_longterm):
     return ifoCAST_longterm
 
 
-## Vintage series
-# Path
-ifoCast_longterm_filepath = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST',
-                                  'ifoCast_longterm_Q42019.xlsx' )
-# Load Excel
-ifoCAST_longterm = pd.read_excel(ifoCast_longterm_filepath)
-
-# Restructure it into the usual dt x dt format
+## Restrucure into the usual dtxdt format and merge
+# Vintage
 ifoCAST_longterm = restructure_ifoCAST_longterm(ifoCAST_longterm)
-
-
-## Live nowcast series
-# Path
-ifoCast_live_filepath = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_live_nowcast_series.xlsx')
-# Load Excel
-ifoCAST_live_nowcast_series = pd.read_excel(ifoCast_live_filepath, index_col=0)
-
-# Restructure it into the usual dt x dt format
+# Live series
 ifoCAST_live_nowcast_series = restructure_ifoCAST_longterm(ifoCAST_live_nowcast_series)
 
 
