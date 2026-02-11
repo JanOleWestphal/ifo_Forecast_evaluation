@@ -14,9 +14,7 @@
 
 """
 Remaining Bugs/Issues:
-- ifo errors in the nowcast are faulty at least from Q2-2020 onwards, reasons unclear
 - filter for naive forecasts with unavailable horizons to the ifo forecasts is faulty, needs to be ammended, not a first order concern
-
 - Dynamic naming of graphs should be improved
 """
 
