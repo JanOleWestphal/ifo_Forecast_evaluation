@@ -1072,7 +1072,7 @@ if settings.evaluate_forecast_components:
         # Error Scatter Plots
         # --------------------------------------------------------------------------------------------------
         
-        first_eval_error_line_path = os.path.join(comp_graph_folder, f'sc{filter_str}{subset_str}')
+        first_eval_error_line_path = os.path.join(comp_graph_folder)
         
         os.makedirs(first_eval_error_line_path, exist_ok=True)
         
@@ -1095,7 +1095,7 @@ if settings.evaluate_forecast_components:
         # Error Bar Plots
         # --------------------------------------------------------------------------------------------------
         
-        first_eval_error_bars_path = os.path.join(comp_graph_folder, f'1_QoQ_Error_Bars{filter_str}{subset_str}')
+        first_eval_error_bars_path = os.path.join(comp_graph_folder)
         
         os.makedirs(first_eval_error_bars_path, exist_ok=True)
         
