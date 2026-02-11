@@ -295,12 +295,16 @@ df_qoq_path = os.path.join(input_dir, 'qoq_combined_GDP_data.xlsx')
 # Load files
 #df = pd.read_excel(df_path, index_col=0)      
 df_qoq_gdp= pd.read_excel(df_qoq_path, index_col=0)
+
 # Convert quarter strings (e.g., '1970Q1') back to datetime if they're still strings
 if df_qoq_gdp.index.dtype == 'object':  # Only convert if index is string type
     df_qoq_gdp.index = pd.PeriodIndex(df_qoq_gdp.index, freq='Q').to_timestamp()
 # Align to mid-quarter dates
 df_qoq_gdp = align_df_to_mid_quarters(df_qoq_gdp)
+# Drop completely empty rows
+df_qoq_gdp = df_qoq_gdp.dropna(how='all')
 #show(df_qoq_gdp)  # uncomment for debugging
+
 
 
 
@@ -641,6 +645,101 @@ def retrieve_qoq_predictions(qoq_forecast_df, model, average_horizon=None, AR_or
         paths = [file_path_forecasts_qoq]
 
     # Store to two different locations
+    for path in paths:
+
+        # Model-based dynamic naming
+        if model in ['AVERAGE', 'GLIDING_AVERAGE']:
+            qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+
+        elif model == 'AR':
+            qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+
+        # Store to path
+        naive_qoq_forecasts.to_excel(os.path.join(path, qoq_forecast_name))
+
+
+    return naive_qoq_forecasts
+
+
+def retrieve_qoq_predictions_components(qoq_forecast_df, model, average_horizon=None, AR_order=None, AR_horizon=None, forecast_horizon=None,
+                                        file_path_forecasts_qoq=file_path_dt_qoq, 
+                                        file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
+                                        gdp_mode=True, component_name: str = ""):
+    """
+    Component-specific version of retrieve_qoq_predictions.
+    Fixes truncation bug at Q2-2023 by removing rows created before earliest publication.
+    """
+
+    ## ---------------------------------------------------------------------------
+    ## Reshape the qoq Forecasts into the same format the ifo forecasts are in
+    ## ---------------------------------------------------------------------------
+
+    # Make a copy to avoid modifying the original DataFrame
+    naive_qoq_forecasts = qoq_forecast_df.copy()
+    #show(naive_qoq_forecasts)  # uncomment for debugging
+    naive_qoq_forecasts = naive_qoq_forecasts.dropna(axis= 1, how='all') 
+
+    # Convert columns to datetime if they aren't already
+    columns_datetime = pd.to_datetime(naive_qoq_forecasts.columns)
+
+    # Ensure the DataFrame index is datetime first
+    naive_qoq_forecasts.index = pd.to_datetime(naive_qoq_forecasts.index, errors='coerce')
+
+    # Drop rows where coercion failed (e.g. if index was pure integers)
+    naive_qoq_forecasts = naive_qoq_forecasts[naive_qoq_forecasts.index.notna()]
+    #show(naive_qoq_forecasts)  # uncomment for debugging
+
+    # Store earliest publication before transformations
+    earliest_pub_raw = columns_datetime.min()
+
+    # Now extend the index safely
+    columns_datetime = pd.to_datetime(naive_qoq_forecasts.columns)
+    start_date = columns_datetime.min()
+    max_shift_needed = len(columns_datetime)
+    total_periods_needed = len(naive_qoq_forecasts) + max_shift_needed + 40
+
+    new_index = pd.date_range(start=start_date, periods=total_periods_needed, freq='3ME')
+
+    # Safe union + sorting
+    naive_qoq_forecasts = naive_qoq_forecasts.reindex(
+        index=new_index.union(naive_qoq_forecasts.index)
+    ).sort_index()
+
+    #show(naive_qoq_forecasts)  # uncomment for debugging
+
+    # Match on quarterly basis: Ensure index and columns are datetime (quarterly aligned)
+    naive_qoq_forecasts.index = pd.to_datetime(naive_qoq_forecasts.index).to_period('Q').to_timestamp()
+    naive_qoq_forecasts.columns = pd.to_datetime(naive_qoq_forecasts.columns).to_period('Q').to_timestamp()
+    # Align to mid-quarter dates
+    naive_qoq_forecasts = align_df_to_mid_quarters(naive_qoq_forecasts)
+
+    # Shift each column so that its first non-NA value aligns with its column date
+    for col in naive_qoq_forecasts.columns:
+        col_date = normalize_to_mid_quarter([col])[0]
+
+        # Check if column date exists in index
+        if col_date in naive_qoq_forecasts.index:
+            target_row = naive_qoq_forecasts.index.get_loc(col_date)
+            naive_qoq_forecasts[col] = naive_qoq_forecasts[col].shift(target_row)
+
+    # SAFETY FILTER: Remove rows before earliest publication date
+    earliest_pub_aligned = normalize_to_mid_quarter([earliest_pub_raw])[0]
+    naive_qoq_forecasts = naive_qoq_forecasts[naive_qoq_forecasts.index >= earliest_pub_aligned]
+
+    #show(naive_qoq_forecasts)  # uncomment for debugging
+
+    # Drop empty rows
+    naive_qoq_forecasts = naive_qoq_forecasts.dropna(how='all')
+
+    #show(naive_qoq_forecasts)  # uncomment for debugging
+
+    ## ---------------------------------------------------------------------------
+    ## Store the Results
+    ## ---------------------------------------------------------------------------
+
+    paths = [file_path_forecasts_qoq]
+
+    # Store to appropriate location(s)
     for path in paths:
 
         # Model-based dynamic naming
@@ -1044,14 +1143,26 @@ def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df, AR
                              gdp_mode=True, component_name: str = ""):
 
             ## Process
-            df_combined_qoq, df_combined_yoy = join_forecaster_output(df_qoq, qoq_forecast_df)
+            # For components, filter df_qoq to exclude unrelated early data that would be brought back by join_forecaster_output
+            df_qoq_for_join = df_qoq.copy()
+            if not gdp_mode:
+                # Filter df_qoq to start from earliest forecast column
+                earliest_forecast_col = pd.to_datetime(qoq_forecast_df.columns).min()
+                df_qoq_for_join = df_qoq_for_join[df_qoq_for_join.index >= earliest_forecast_col]
+            
+            df_combined_qoq, df_combined_yoy = join_forecaster_output(df_qoq_for_join, qoq_forecast_df)
 
             ## Store Output
 
-            # qoq Time Series
-            retrieve_qoq_predictions(qoq_forecast_df, model=model, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, forecast_horizon=forecast_horizon,
-                                     file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
-                                     gdp_mode=gdp_mode, component_name=component_name)
+            # qoq Time Series - use component-specific function for better robustness
+            if gdp_mode:
+                retrieve_qoq_predictions(qoq_forecast_df, model=model, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, forecast_horizon=forecast_horizon,
+                                         file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
+                                         gdp_mode=gdp_mode, component_name=component_name)
+            else:
+                retrieve_qoq_predictions_components(qoq_forecast_df, model=model, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, forecast_horizon=forecast_horizon,
+                                                    file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
+                                                    gdp_mode=gdp_mode, component_name=component_name)
 
 
             # DateTime indexed results

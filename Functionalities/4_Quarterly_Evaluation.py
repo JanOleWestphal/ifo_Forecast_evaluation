@@ -262,7 +262,7 @@ if os.path.exists(file_path_component_qoq):
             
             df = pd.read_excel(file, index_col=0)
             component_naive_qoq_dfs_dict[component][model] = df
-            print(f"  Loaded component forecast: {component} - {model}")
+            print(f"  Loaded naive component forecast: {component} - {model}")
 
 
 
