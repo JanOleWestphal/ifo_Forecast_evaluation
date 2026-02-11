@@ -35,7 +35,7 @@ Get error tables, run tests on relative performance
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
-print("\n Executing the forecast Enhancement Analysis module ... \n")
+print("\n Executing the Forecast Enhancement Analysis module ... \n")
 
 
 # ==================================================================================================
@@ -57,6 +57,7 @@ from typing import Union, Dict, Optional, Mapping
 
 
 # Import libraries
+from pathlib import Path
 import requests
 import pandas as pd
 from pandas.tseries.offsets import QuarterBegin
@@ -69,6 +70,7 @@ from statsmodels.tsa.ar_model import AutoReg
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.cm as cm
+from mpl_toolkits.mplot3d import Axes3D
 
 import seaborn as sns
 
@@ -133,13 +135,17 @@ run_gva_evaluation = settings.run_gva_evaluation
 # ==================================================================================================
 
 ## Result Folder Paths
-table_folder = os.path.join(wd, '1_Result_Tables')
-graph_folder = os.path.join(wd, '2_Result_Graphs')
+result_folder = os.path.join(wd, '4_Mixed_Forecasts')
 
+
+## Subfolder
+table_folder = os.path.join(result_folder, '1_Tables')
+error_stats_plot_folder = os.path.join(result_folder, '2_Error_Plots')
+mixed_model_folder = os.path.join(result_folder, '3_Optimal_Mixing_Weighs')
 
 
 ## Create if needed
-for folder in [table_folder, graph_folder]:
+for folder in [result_folder, table_folder, error_stats_plot_folder, mixed_model_folder]:
     os.makedirs(folder, exist_ok=True)
 
 
@@ -262,9 +268,69 @@ AR_nowcasts = nowcast_builder(df_ar2)
 ## Call merge_quarterly_dfs_dropna() from helperfunctions
 joint_nowcast_df = merge_quarterly_dfs_dropna(
     dfs= [qoq_first_eval, ifo_judgemental_nowcasts, ifoCAST_nowcast, AR_nowcasts ],
-    col_names=['realized', 'judgemental', 'naiveAR2', 'ifoCast']
+    col_names=['realized', 'judgemental', 'ifoCast', 'naiveAR2']
 )
 
+#show(joint_nowcast_df)
+
+## Create a clean copy
+joint_nowcast_base_df = joint_nowcast_df.copy()
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# OPTIONAL: filter rows
+# -------------------------------------------------------------------------------------------------#
+
+"""NOTE: all rows are indexed by latest date of quarter"""
+
+
+def filter_df_by_datetime_index(
+    df: pd.DataFrame,
+    start: Optional[Union[str, pd.Timestamp]] = None,
+    end: Optional[Union[str, pd.Timestamp]] = None,
+) -> pd.DataFrame:
+    
+    """
+    Filter a DataFrame by applying lower and/or upper datetime bounds to its index.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input DataFrame with a DatetimeIndex (or index convertible to datetime).
+    start : str or pandas.Timestamp, optional
+        Lower bound (inclusive). Rows with index < start are dropped.
+    end : str or pandas.Timestamp, optional
+        Upper bound (inclusive). Rows with index > end are dropped.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Filtered DataFrame.
+
+    Notes
+    -----
+    - Bounds are inclusive.
+    - If start or end is None, that side is left unfiltered.
+    - The index is coerced to pandas.DatetimeIndex if needed.
+    """
+
+    out = df.copy()
+    out.index = pd.to_datetime(out.index)
+
+    if start is not None:
+        start = pd.to_datetime(start)
+        out = out.loc[out.index >= start]
+
+    if end is not None:
+        end = pd.to_datetime(end)
+        out = out.loc[out.index <= end]
+
+    return out
+
+
+## Adjust filter if needed
+joint_nowcast_df = filter_df_by_datetime_index(joint_nowcast_df, '2000-01-01', '2100-01-01')
 #show(joint_nowcast_df)
 
 
@@ -284,37 +350,553 @@ joint_nowcast_df = merge_quarterly_dfs_dropna(
 #                                   SIMPLE LINEAR COMBINATIONS                                     #
 # =================================================================================================#
 
+## Combination function
+def combine_2_forecasts(df, col1, col2, w1, w2, new_name):
+    df[new_name] = df[col1] * w1 + df[col2] *w2
+
+    return df
+
+def combine_3_forecasts(df, col1, col2, col3, w1, w2, w3, new_name):
+    df[new_name] = df[col1] * w1 + df[col2] *w2 + df[col3] * w3
+
+    return df
 
 
+## Simple average of judgmental and IfoCAST
+joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'judgemental', 'ifoCast', 0.5, 0.5, 'judg_ifoCast')
 
+## Simple average of judgmental and AR2
+joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'judgemental', 'naiveAR2', 0.5, 0.5, 'judg_AR')
 
+## Simple average of ifoCAST and AR2
+joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'ifoCast', 'naiveAR2', 0.5, 0.5, 'ifoCAST_AR')
 
+## Simple average of judgmental (0.5), ifoCAST and AR2 (0.25 each)
+joint_nowcast_df = combine_3_forecasts(joint_nowcast_df, 'judgemental', 'naiveAR2', 'ifoCast', 0.5, 0.25, 0.25, 'judg_AR_ifoCast')
 
-
-
-
-
-
-
-
-# =================================================================================================#
-#                                   OPTIMIZED LINEAR COMBINATIONS                                  #
-# =================================================================================================#
-
-
-
-
+#show(joint_nowcast_df)
 
 
 # -------------------------------------------------------------------------------------------------#
+#                                       CALCULATE ERRORS                                           #
+# -------------------------------------------------------------------------------------------------#
+
+# Loop through cols and substract them from the leading realized values col
+def add_error_columns(df, prefix="error"):
+
+    first_col = df.columns[0]
+
+    for col in df.columns[1:]:
+        df[f"{prefix}_{first_col}_minus_{col}"] = df[first_col] - df[col]
+
+    return df
+
+# Call error function
+joint_nowcast_df = add_error_columns(joint_nowcast_df)
+#show(joint_nowcast_df)
+
+## Save
+joint_nowcast_df.to_excel(
+    excel_writer=os.path.join(table_folder, "Nowcast_Series_full.xlsx")
+)
+
+
+# -------------------------------------------------------------------------------------------------#
+#                                  CALCULATE ERROR STATISTICS                                      #
+# -------------------------------------------------------------------------------------------------#
+
+def error_columns_summary(df, prefix="error"):
+    """
+    Compute error statistics for all columns starting with `prefix`.
+
+    Statistics computed per column:
+        ME   : mean error
+        MAE  : mean absolute error
+        MSE  : mean squared error
+        RMSE : root mean squared error
+        SE   : standard error of the mean error
+        N    : number of non-missing observations
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input DataFrame containing error columns.
+    prefix : str, default="error"
+        Prefix identifying error columns.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame indexed by error column name with columns:
+        ["ME", "MAE", "MSE", "RMSE", "SE", "N"]
+    """
+
+    rows = []
+
+    for col in df.columns:
+        if not col.startswith(prefix):
+            continue
+
+        e = df[col].dropna()
+        n = len(e)
+
+        if n == 0:
+            stats = dict(ME=np.nan, MAE=np.nan, MSE=np.nan,
+                         RMSE=np.nan, SE=np.nan, N=0)
+        else:
+            me = e.mean()
+            mse = (e ** 2).mean()
+            stats = dict(
+                ME=me,
+                MAE=e.abs().mean(),
+                MSE=mse,
+                RMSE=np.sqrt(mse),
+                SE=e.std(ddof=1) / np.sqrt(n) if n > 1 else np.nan,
+                N=n,
+            )
+
+        rows.append(pd.Series(stats, name=col))
+
+    summary_df = pd.DataFrame(rows)
+
+    # Rescale and Rename
+    summary_df["N"] = summary_df["N"].astype("Int64")
+    summary_df.index = summary_df.index.astype(str).str.replace(
+        "^error_realized_minus_", "", regex=True
+    )
+
+    return summary_df
+
+
+
+## Obtain error staistics
+nowcast_error_summary_df = error_columns_summary(joint_nowcast_df)
+
+#show(nowcast_error_summary_df)
+
+## SAVE
+nowcast_error_summary_df.to_excel(
+    excel_writer=os.path.join(table_folder, "Error_Statistics_Simple_Mixed_Models.xlsx")
+)
+
+"""
+MAJOR RESULT: None of these improve anything
+"""
+
+
+
 # =================================================================================================#
 #                                        Visualize Results                                         #
 # =================================================================================================#
+
+
+## Error Metric Barplots
+
+def save_error_metric_barplots(
+    stats_df: pd.DataFrame,
+    error_fig_path: str,
+    metrics=("ME", "MAE", "RMSE", "MSE", "SE"),
+    n_col: str = "N",
+    file_ext: str = "png",
+    dpi: int = 200,
+    rotate_xticks: int = 45,
+):
+    """
+    For a stats DataFrame (rows = models/series, columns include error metrics),
+    save one bar plot per metric to `error_fig_path`.
+
+    Each plot:
+      - x-axis: row names (stats_df.index)
+      - y-axis: metric values
+      - title: "{metric} (N=...)" where N is taken from stats_df[n_col]
+              If N is not unique across rows, title shows "N=min-max".
+
+    Parameters
+    ----------
+    stats_df : pd.DataFrame
+        DataFrame with index as row labels and columns including metrics and `n_col`.
+    error_fig_path : str
+        Directory where figures will be saved.
+    metrics : tuple/list of str
+        Metrics to plot as separate figures.
+    n_col : str
+        Column name containing N.
+    file_ext : str
+        File extension, e.g. "png" or "pdf".
+    dpi : int
+        DPI for raster formats.
+    rotate_xticks : int
+        Rotation angle for x tick labels.
+
+    Returns
+    -------
+    list[str]
+        List of saved file paths.
+    """
+    os.makedirs(error_fig_path, exist_ok=True)
+
+    if n_col not in stats_df.columns:
+        raise ValueError(f"'{n_col}' column not found in stats_df.")
+
+    # Determine N string for titles
+    n_vals = stats_df[n_col].dropna()
+    if len(n_vals) == 0:
+        n_str = "N=?"
+    else:
+        uniq = pd.unique(n_vals)
+        if len(uniq) == 1:
+            n_str = f"N={int(uniq[0])}"
+        else:
+            n_min, n_max = int(n_vals.min()), int(n_vals.max())
+            n_str = f"N={n_min}-{n_max}"
+
+    saved = []
+
+    for metric in metrics:
+        if metric not in stats_df.columns:
+            continue  # skip missing metrics silently
+
+        y = stats_df[metric]
+        x = stats_df.index.astype(str)
+
+        fig, ax = plt.subplots()
+        ax.bar(x, y.values)
+        ax.set_title(f"{metric} ({n_str})")
+        ax.set_ylabel(metric)
+        ax.set_xlabel("")
+
+        ax.tick_params(axis="x", labelrotation=rotate_xticks)
+        fig.tight_layout()
+
+        out_path = os.path.join(error_fig_path, f"{metric}.{file_ext}")
+        fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+
+        saved.append(out_path)
+
+    return saved
+
+
+## Create Error Metrics Plots
+save_error_metric_barplots(nowcast_error_summary_df, error_stats_plot_folder)
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                   OPTIMIZED LINEAR COMBINATIONS                                  #
+# =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
 
 
+# -------------------------------------------------------------------------------------------------#
+#                                            Helper                                                #
+# -------------------------------------------------------------------------------------------------#
 
+def _error_metric(errors: pd.Series, criterion: str) -> float:
+    """Compute a scalar error metric from an error Series (forecast - realised)."""
+    e = errors.dropna()
+    if e.empty:
+        return np.nan
+
+    c = criterion.upper()
+    if c == "ME":
+        return float(e.mean())
+    if c == "MAE":
+        return float(e.abs().mean())
+    if c == "MSE":
+        return float((e**2).mean())
+    if c == "RMSE":
+        return float(np.sqrt((e**2).mean()))
+    raise ValueError("criterion must be one of {'ME','MAE','MSE','RMSE'}")
+
+
+
+# -------------------------------------------------------------------------------------------------#
+#                                    One weight grid search                                        #
+# -------------------------------------------------------------------------------------------------#
+
+def optimal_weights_2_forecasts_grid(
+    df: pd.DataFrame,
+    *,
+    realised_col: str = 'realized',
+    f1_col: str,
+    f2_col: str,
+    criterion: str = "RMSE",
+    n_grid: int = 1000,
+    eps: float = 1e-6,
+    plot_title: str | None = None,
+    w1_explanation: str | None = None,
+    show_plot: bool = False,
+    save_fig: bool = True,
+    fig_path: str | Path | None = None,
+    print_result: bool = True,
+):
+    if save_fig and fig_path is None:
+        raise ValueError("fig_path must be provided when save_fig=True")
+
+    y = df[realised_col]
+    f1 = df[f1_col]
+    f2 = df[f2_col]
+
+    w1_grid = np.linspace(eps, 1 - eps, n_grid)
+    metric_vals = np.empty_like(w1_grid)
+
+    for i, w1 in enumerate(w1_grid):
+        combined = w1 * f1 + (1 - w1) * f2
+        metric_vals[i] = _error_metric(combined - y, criterion)
+
+    crit = criterion.upper()
+    objective = np.abs(metric_vals) if crit == "ME" else metric_vals
+    idx = int(np.nanargmin(objective))
+
+    best_w1 = float(w1_grid[idx])
+    best_w2 = float(1 - best_w1)
+    best_metric = float(metric_vals[idx])
+
+    grid_df = pd.DataFrame({"w1": w1_grid, "w2": 1 - w1_grid, crit: metric_vals})
+
+    # ---- Plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    ax.plot(grid_df["w1"], grid_df[crit], label=crit)
+    ax.scatter([best_w1], [best_metric], color="crimson", s=45, zorder=3, label="optimum")
+    ax.set_xlabel("w1")
+    ax.set_ylabel(crit)
+    if plot_title:
+        ax.set_title(plot_title)
+    elif w1_explanation:
+        ax.set_title(w1_explanation)
+
+    annotation = (
+        f"Optimal weights:\n"
+        f"w1={best_w1:.4f}\n"
+        f"w2={best_w2:.4f}\n"
+        f"{crit}={best_metric:.6g}"
+    )
+    ax.text(
+        0.02,
+        0.02,
+        annotation,
+        transform=ax.transAxes,
+        ha="left",
+        va="bottom",
+        fontsize=9,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.9),
+    )
+    ax.legend(loc="upper right")
+
+    if save_fig:
+        fig_path = Path(fig_path)
+        fig_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(fig_path, bbox_inches="tight")
+
+    if show_plot:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    if print_result:
+        print(
+            f"Weight-column mapping: w1 -> {f1_col}, w2 -> {f2_col}\n"
+            f"Optimal weights: w1={best_w1:.6f}, w2={best_w2:.6f}\n"
+            f"{crit}={best_metric:.6g}"
+        )
+
+    return {
+        "best_w1": best_w1,
+        "best_w2": best_w2,
+        "best_metric": best_metric,
+        "criterion": crit,
+        "grid": grid_df,
+    }
+
+
+
+# -------------------------------------------------------------------------------------------------#
+#                                    Two weights grid search                                       #
+# -------------------------------------------------------------------------------------------------#
+
+def optimal_weights_3_forecasts_grid(
+    df: pd.DataFrame,
+    *,
+    realised_col: str ='realized',
+    f1_col: str,
+    f2_col: str,
+    f3_col: str,
+    criterion: str = "RMSE",
+    step: float = 0.02,
+    eps: float = 1e-6,
+    plot_title: str | None = None,
+    weights_explanation: str | None = None,
+    show_plot: bool = False,
+    save_fig: bool = True,
+    fig_path: str | Path | None = None,
+    print_result: bool = True,
+):
+    if save_fig and fig_path is None:
+        raise ValueError("fig_path must be provided when save_fig=True")
+
+    y = df[realised_col]
+    f1, f2, f3 = df[f1_col], df[f2_col], df[f3_col]
+
+    rows = []
+    crit = criterion.upper()
+
+    w1_vals = np.arange(eps, 1 - 2 * eps + 1e-12, step)
+    for w1 in w1_vals:
+        w2_vals = np.arange(eps, 1 - w1 - eps + 1e-12, step)
+        for w2 in w2_vals:
+            w3 = 1 - w1 - w2
+            if w3 <= eps:
+                continue
+
+            combined = w1 * f1 + w2 * f2 + w3 * f3
+            m = _error_metric(combined - y, crit)
+            rows.append((w1, w2, w3, m))
+
+    grid_df = pd.DataFrame(rows, columns=["w1", "w2", "w3", crit])
+
+    objective = np.abs(grid_df[crit]) if crit == "ME" else grid_df[crit]
+    best = grid_df.loc[objective.idxmin()]
+
+    # ---- Plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+    ax.scatter(grid_df["w1"], grid_df["w2"], grid_df[crit], c=grid_df[crit], cmap="viridis", s=12)
+    ax.scatter([best.w1], [best.w2], [best[crit]], color="crimson", s=80, marker="*", depthshade=False)
+    ax.set_xlabel("w1")
+    ax.set_ylabel("w2")
+    ax.set_zlabel(crit)
+    if plot_title:
+        ax.set_title(plot_title)
+    elif weights_explanation:
+        ax.set_title(weights_explanation)
+
+    annotation = (
+        f"Optimal weights:\n"
+        f"w1={best.w1:.4f}\n"
+        f"w2={best.w2:.4f}\n"
+        f"w3={best.w3:.4f}\n"
+        f"{crit}={best[crit]:.6g}"
+    )
+    ax.text2D(
+        0.98,
+        0.02,
+        annotation,
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=9,
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray", alpha=0.9),
+    )
+
+    if save_fig:
+        fig_path = Path(fig_path)
+        fig_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(fig_path, bbox_inches="tight")
+
+    if show_plot:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    if print_result:
+        print(
+            f"Weight-column mapping: w1 -> {f1_col}, w2 -> {f2_col}, w3 -> {f3_col}\n"
+            f"Optimal weights: "
+            f"w1={best.w1:.6f}, w2={best.w2:.6f}, w3={best.w3:.6f}\n"
+            f"{crit}={best[crit]:.6g}"
+        )
+
+    return {
+        "best_w1": float(best.w1),
+        "best_w2": float(best.w2),
+        "best_w3": float(best.w3),
+        "best_metric": float(best[crit]),
+        "criterion": crit,
+        "grid": grid_df,
+    }
+
+"""
+optimal_weights_2_forecasts_grid(
+    df,
+    realised_col="y",
+    f1_col="f_model",
+    f2_col="f_judgement",
+    save_fig=True,
+    fig_path="figures/weight_search_2f_rmse.pdf",
+)
+
+optimal_weights_3_forecasts_grid(
+    df,
+    realised_col="y",
+    f1_col="f1",
+    f2_col="f2",
+    f3_col="f3",
+    save_fig=True,
+    fig_path="figures/weight_search_3f_rmse.pdf",
+)
+
+"""
+
+
+
+
+# =================================================================================================#
+#                                   ANALYSE OPTIMAL COMBINATIONS                                   #
+# =================================================================================================#
+
+# -------------------------------------------------------------------------------------------------#
+#                                    judgemental and ifoCAST                                       #
+# -------------------------------------------------------------------------------------------------#
+## Savepath
+jc_path = os.path.join(mixed_model_folder, 'optimal_judgemental_ifoCAST_weight.png')
+
+## Call Function
+optimal_weights_2_forecasts_grid(joint_nowcast_df, f1_col='judgemental', f2_col='ifoCast', 
+                                 plot_title= 'ifoCast - judgemental forecast' ,
+                                 fig_path=jc_path)
+
+
+
+# -------------------------------------------------------------------------------------------------#
+#                                      judgemental and AR2                                         #
+# -------------------------------------------------------------------------------------------------#
+## Savepath
+jar_path = os.path.join(mixed_model_folder, 'optimal_judgemental_AR2_weight.png')
+
+## Call Function
+optimal_weights_2_forecasts_grid(joint_nowcast_df, f1_col='judgemental', f2_col='naiveAR2',
+                                 plot_title= 'Naive AR2 Forecast - Judgemental Forecast',
+                                fig_path=jar_path)
+
+
+# -------------------------------------------------------------------------------------------------#
+#                                        ifoCAST and AR2                                           #
+# -------------------------------------------------------------------------------------------------#
+## Savepath
+car_path = os.path.join(mixed_model_folder, 'optimal_ifoCAST_AR2_weight.png')
+
+## Call Function
+optimal_weights_2_forecasts_grid(joint_nowcast_df, f1_col='ifoCast', f2_col='naiveAR2', 
+                                 plot_title= 'Naive AR2 Forecast - ifoCAST',
+                                 fig_path=car_path)
+
+
+# -------------------------------------------------------------------------------------------------#
+#                                  judgemental, ifoCAST and AR2                                    #
+# -------------------------------------------------------------------------------------------------#
+## Savepath
+jarc_path = os.path.join(mixed_model_folder, 'optimal_judgemental_ifoCAST_AR2_weight.png')
+
+## Call Function
+optimal_weights_3_forecasts_grid(joint_nowcast_df, f1_col='judgemental',f2_col='ifoCast', f3_col='naiveAR2',
+                                 plot_title= 'judgemental (w1) - ifoCAST (w2) - AR2 (w3)'  ,
+                                  fig_path=jarc_path)
 
 
 
