@@ -57,7 +57,7 @@ VISUALIZATIONS:
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
-print("\n Executing the forecast Enhancement Analysis module ... \n")
+print("\n Executing the Judgemental Derivations Analysis module ... \n")
 
 
 # ==================================================================================================
@@ -155,19 +155,27 @@ run_gva_evaluation = settings.run_gva_evaluation
 # ==================================================================================================
 
 ## Result Folder Paths
-table_folder = os.path.join(wd, '1_Result_Tables')
-graph_folder = os.path.join(wd, '2_Result_Graphs')
+result_folder = os.path.join(wd, '5_Judgemental_Derivations_Analysis')
+
+
+## Subfolder
+table_folder = os.path.join(result_folder, '1_Tables')
+error_stats_plot_folder = os.path.join(result_folder, '2_Error_Plots')
 
 
 
 ## Create if needed
-for folder in [table_folder, graph_folder]:
+for folder in [result_folder, table_folder, error_stats_plot_folder]:
     os.makedirs(folder, exist_ok=True)
 
 
 ## Clear Result Folders
 #if settings.clear_result_folders:
 #    folder_clear(folder_path)
+
+
+
+
 
 
 
@@ -286,6 +294,22 @@ joint_nowcast_df = merge_quarterly_dfs_dropna(
 
 #show(joint_nowcast_df)
 
+## Create a clean copy
+joint_nowcast_base_df = joint_nowcast_df.copy()
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# OPTIONAL: filter rows
+# -------------------------------------------------------------------------------------------------#
+
+"""NOTE: all rows are indexed by latest date of quarter"""
+
+## Adjust filter if needed, boundary inclusive
+joint_nowcast_df = filter_df_by_datetime_index(joint_nowcast_df, '2000-01-01', '2100-01-01')
+#show(joint_nowcast_df)
+
+
 
 
 
@@ -295,6 +319,24 @@ joint_nowcast_df = merge_quarterly_dfs_dropna(
 
 ## for ifo judgemental, AR2 and ifoCAST nowcasts
 
+# Loop through cols and substract them from the leading realized values col
+def add_error_columns(df, prefix="error"):
+
+    first_col = df.columns[0]
+
+    for col in df.columns[1:]:
+        df[f"{prefix}_{first_col}_minus_{col}"] = df[first_col] - df[col]
+
+    return df
+
+# Call error function
+joint_nowcast_df = add_error_columns(joint_nowcast_df)
+#show(joint_nowcast_df)
+
+## Save
+joint_nowcast_df.to_excel(
+    excel_writer=os.path.join(table_folder, "Nowcast_Series_full.xlsx")
+)
 
 
 
@@ -302,7 +344,15 @@ joint_nowcast_df = merge_quarterly_dfs_dropna(
 #                                   Create derivation measures                                     #
 # =================================================================================================#
 
-## from ifoCAST and from AR2
+## from ifoCAST
+joint_nowcast_df["derivation_from_ifoCast"] = (
+    joint_nowcast_df["judgemental"] - joint_nowcast_df["ifoCast"]
+)
+
+## from AR2
+joint_nowcast_df["derivation_from_AR"] = (
+    joint_nowcast_df["judgemental"] - joint_nowcast_df["naiveAR2"]
+)
 
 
 
@@ -311,6 +361,53 @@ joint_nowcast_df = merge_quarterly_dfs_dropna(
 #                                    Obtain net improvements                                       #
 # =================================================================================================#
 
+# ------------------------------------------------------------------------------------
+# Net improvement of judgemental forecast relative to baseline forecasts
+#
+# Definitions
+# ----------
+# Linear improvement  :  NI_lin  = |e_baseline| - |e_judgemental|
+# Quadratic improvement: NI_quad = e_baseline^2 - e_judgemental^2
+#
+# Positive values  -> judgement improved the forecast
+# Negative values  -> judgement worsened the forecast
+#
+# Required columns already present:
+#   realized
+#   judgemental
+#   naiveAR2
+#   ifoCast
+#   error_realized_minus_judgemental
+#   error_realized_minus_naiveAR2
+#   error_realized_minus_ifoCast
+#   derivation_from_ifoCast
+#   derivation_from_AR
+# ------------------------------------------------------------------------------------
+
+# ---------- Judgement vs ifoCast ----------
+joint_nowcast_df["net_improvement_jdg_ifoCast_lin"] = (
+    joint_nowcast_df["error_realized_minus_ifoCast"].abs()
+    - joint_nowcast_df["error_realized_minus_judgemental"].abs()
+)
+
+joint_nowcast_df["net_improvement_jdg_ifoCast_quad"] = (
+    joint_nowcast_df["error_realized_minus_ifoCast"]**2
+    - joint_nowcast_df["error_realized_minus_judgemental"]**2
+)
+
+
+# ---------- Judgement vs naiveAR2 ----------
+joint_nowcast_df["net_improvement_jdg_AR_lin"] = (
+    joint_nowcast_df["error_realized_minus_naiveAR2"].abs()
+    - joint_nowcast_df["error_realized_minus_judgemental"].abs()
+)
+
+joint_nowcast_df["net_improvement_jdg_AR_quad"] = (
+    joint_nowcast_df["error_realized_minus_naiveAR2"]**2
+    - joint_nowcast_df["error_realized_minus_judgemental"]**2
+)
+
+#show(joint_nowcast_df)
 
 
 
@@ -330,14 +427,70 @@ j<b: True (negatve adjustment), False; 'j_less_b'
 # Classification builder function
 # -------------------------------------------------------------------------------------------------#
 
+
+def _classify_derivations(df, b_col: str, suffix: str, r_col: str = "realized", j_col: str = "judgemental"):
+    r = df[r_col]
+    j = df[j_col]
+    b = df[b_col]
+
+    # Ensure NA-safe comparisons: keep pd.NA where any input is missing
+    valid = r.notna() & j.notna() & b.notna()
+
+    df[f"r_less_{suffix}"] = pd.Series(np.where(valid, r < b, pd.NA), index=df.index, dtype="boolean")
+    df[f"j_less_{suffix}"] = pd.Series(np.where(valid, j < b, pd.NA), index=df.index, dtype="boolean")
+    df[f"j_diff_less_{suffix}_diff"] = pd.Series(
+        np.where(valid, (j - r).abs() < (b - r).abs(), pd.NA),
+        index=df.index,
+        dtype="boolean",
+    )
+
+
 # -------------------------------------------------------------------------------------------------#
 # Evaluation against the ifoCAST df
 # -------------------------------------------------------------------------------------------------#
+_classify_derivations(joint_nowcast_df, b_col="ifoCast", suffix="ifoCast")
 
 
 # -------------------------------------------------------------------------------------------------#
 # Evaluation against the AR2 df
 # -------------------------------------------------------------------------------------------------#
+_classify_derivations(joint_nowcast_df, b_col="naiveAR2", suffix="AR2")
+
+# show(joint_nowcast_df)
+
+
+
+# =================================================================================================#
+#                                  Split dfs and save results                                      #
+# =================================================================================================#
+
+## Split
+
+# Create copy
+judgment_eval_df_joint = joint_nowcast_df.copy()
+
+# Columns always included
+base_cols = [
+    "realized",
+    "judgemental",
+    "error_realized_minus_judgemental",
+]
+
+# ---- ifoCast subset ----
+ifo_cols = [c for c in judgment_eval_df_joint .columns if "ifoCast" in c]
+judgment_eval_df_ifoCast = judgment_eval_df_joint [base_cols + ifo_cols].copy()
+
+# ---- AR subset (matches AR / naiveAR2 / derivation_from_AR etc.) ----
+ar_cols = [c for c in judgment_eval_df_joint .columns if "AR" in c]
+joint_nowcast_AR_df = judgment_eval_df_joint [base_cols + ar_cols].copy()
+
+
+## Save
+judgment_eval_df_joint.to_excel(os.path.join(table_folder, "judgemental_derivations_full.xlsx"))
+judgment_eval_df_ifoCast.to_excel(os.path.join(table_folder, "judgemental_derivations_ifoCast.xlsx"))
+joint_nowcast_AR_df.to_excel(os.path.join(table_folder, "judgemental_derivations_AR2.xlsx"))
+
+
 
 
 
