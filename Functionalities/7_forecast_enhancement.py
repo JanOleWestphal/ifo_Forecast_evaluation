@@ -172,6 +172,7 @@ qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
 
 ## First Releases
 qoq_first_eval = pd.read_excel(qoq_path_first, index_col=0)
+qoq_first_eval = align_df_to_mid_quarters(qoq_first_eval)  # Align to mid-quarter dates
 #show(qoq_first_eval)
 
 
@@ -214,6 +215,7 @@ def nowcast_builder(df):
     return df_out
 
 ifo_judgemental_nowcasts = nowcast_builder(ifo_qoq_forecasts)
+ifo_judgemental_nowcasts = align_df_to_mid_quarters(ifo_judgemental_nowcasts)  # Align to mid-quarter dates
 #show(ifo_judgemental_nowcasts)
 
 
@@ -225,6 +227,7 @@ ifoCAST_nowcasts_full_path = os.path.join(
 
 # Load 
 ifoCAST_nowcast = pd.read_excel(ifoCAST_nowcasts_full_path , index_col=0)
+ifoCAST_nowcast = align_df_to_mid_quarters(ifoCAST_nowcast)  # Align to mid-quarter dates
 #show(ifoCAST_nowcast)
 
 # -------------------------------------------------------------------------------------------------#
@@ -246,6 +249,7 @@ df_ar2 = naive_qoq_dfs_dict[matches[0]]
 
 # Get Nowcasts
 AR_nowcasts = nowcast_builder(df_ar2)
+AR_nowcasts = align_df_to_mid_quarters(AR_nowcasts)  # Align to mid-quarter dates
 #show(AR_nowcasts)
 
 
@@ -799,7 +803,9 @@ optimal_weights_3_forecasts_grid(joint_nowcast_df, f1_col='judgemental',f2_col='
 
 
 
-
+# --------------------------------------------------------------------------------------------------
+print(f" \nForecast Enahncement Module complete! \n",f"Find Result Graphs in {error_stats_plot_folder} and \nResult Tables in {table_folder}\n")
+# --------------------------------------------------------------------------------------------------
 
 
 

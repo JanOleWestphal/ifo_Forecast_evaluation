@@ -175,6 +175,7 @@ file_path_ifo_qoq = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_
 
 # Load 
 ifo_qoq_forecasts = pd.read_excel(file_path_ifo_qoq, index_col=0)
+ifo_qoq_forecasts = align_df_to_mid_quarters(ifo_qoq_forecasts)  # Align to mid-quarter dates
 
 #show(ifo_qoq_forecasts)
 
@@ -628,14 +629,17 @@ for data_name, eval_path in zip(['GDP', 'GVA'], [eval_path_gdp, eval_path_gva]):
     ## First releases
     qoq_path_first = os.path.join(eval_path, f'first_release_qoq_{data_name}.xlsx')
     qoq_first_eval_dict[data_name] = pd.read_excel(qoq_path_first, index_col=0)
+    qoq_first_eval_dict[data_name] = align_df_to_mid_quarters(qoq_first_eval_dict[data_name])  # Align to mid-quarter
 
     ## Latest releases
     qoq_path_latest = os.path.join(eval_path, f'latest_release_qoq_{data_name}.xlsx')
     qoq_latest_eval_dict[data_name] = pd.read_excel(qoq_path_latest, index_col=0)
+    qoq_latest_eval_dict[data_name] = align_df_to_mid_quarters(qoq_latest_eval_dict[data_name])  # Align to mid-quarter
 
     ## Revision
     qoq_path_rev = os.path.join(eval_path, f'revision_qoq_{data_name}.xlsx')
     qoq_rev_dict[data_name] = pd.read_excel(qoq_path_rev, index_col=0)
+    qoq_rev_dict[data_name] = align_df_to_mid_quarters(qoq_rev_dict[data_name])  # Align to mid-quarter
 
 
 

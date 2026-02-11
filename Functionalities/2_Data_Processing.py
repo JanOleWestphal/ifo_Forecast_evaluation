@@ -746,6 +746,7 @@ if settings.extend_rt_data_backwards:
     # Ensure proper datetime formats
     gdp_combined = gdp_combined.copy()
     gdp_combined.index = pd.to_datetime(gdp_combined.index).to_period('Q').to_timestamp()
+    gdp_combined = align_df_to_mid_quarters(gdp_combined)  # Align to mid-quarter dates
     gdp_combined.columns = pd.to_datetime(gdp_combined.columns)
 
     # Select the first datetime column
@@ -1024,12 +1025,17 @@ def build_first_release_series_rowwise(df_input: pd.DataFrame) -> pd.DataFrame:
         start_date = df.index[start_pos]
 
         cur_tail = df.loc[df.index >= start_date, cur_col]
+        # Ensure row is from the previous quarter or earlier relative to column
+        col_period = pd.Timestamp(cur_col).to_period('Q')
+        prev_quarter = col_period - 1
+        cur_tail = cur_tail[pd.to_datetime(cur_tail.index).to_period('Q') <= prev_quarter]
         take_mask = cur_tail.notna()
         if take_mask.any():
             out.loc[cur_tail.index[take_mask]] = pd.to_numeric(cur_tail.loc[take_mask], errors="coerce").to_numpy()
 
     result_df = out.dropna().to_frame("value")
     result_df.index.name = "date"
+    result_df = align_df_to_mid_quarters(result_df)
     return result_df
 
 
@@ -1270,8 +1276,9 @@ def process_ifo_component_realtime(df_raw):
         3) Append those (row_date, value) into a single column: 'first_release_value'
         4) Update last_stored_row to the max row_date added so far
         """
-        eval_s = pd.Series(dtype="float64", name="first_release_value")
+        series_list = []
         last_stored_row = None
+        stored_indices = set()
 
         # ensure datetime index/columns if needed
         source = source_df.copy()
@@ -1294,14 +1301,23 @@ def process_ifo_component_realtime(df_raw):
             if last_stored_row is not None:
                 candidates = candidates[candidates.index > last_stored_row]
 
-            # Step 3: add to single series (do not overwrite existing dates)
+            # Step 3: add to list (do not overwrite existing dates)
             if not candidates.empty:
                 # keep only dates not already stored (extra safety)
-                candidates = candidates[~candidates.index.isin(eval_s.index)]
-                eval_s = pd.concat([eval_s, candidates.rename("first_release_value")])
+                candidates = candidates[~candidates.index.isin(stored_indices)]
+                if not candidates.empty:
+                    candidates = candidates.rename("first_release_value")
+                    series_list.append(candidates)
+                    
+                    # Step 4: update stored indices and last row
+                    stored_indices.update(candidates.index)
+                    last_stored_row = candidates.index.max()
 
-                # Step 4: update last stored row
-                last_stored_row = eval_s.index.max()
+        # Concatenate all series at once to avoid FutureWarning with empty Series
+        if series_list:
+            eval_s = pd.concat(series_list)
+        else:
+            eval_s = pd.Series(dtype="float64", name="first_release_value")
 
         eval_df = eval_s.sort_index().to_frame()
         eval_df.index.name = "date"
