@@ -191,12 +191,23 @@ else:
 
 
 # ==================================================================================================
-# ifoCAST long-term EVALUATION and OUTPUT
+# Forecast Enhancement Module
 # ==================================================================================================
-if settings.run_ifoCAST_long_term_evaluation:
-    execute_script('6_ifoCAST_long_term_Evaluation.py')
+if settings.run_forecast_enhancement_module:
+    execute_script('7_forecast_enhancement.py')
 else: 
-    print("Warning: No new ifoCAST long-term evalaution output has been generated, set run_ifoCAST_long_term_evaluation =True if desired. \n ")
+    print("Warning: No new forecast enhancement output has been generated, set run_forecast_enhancement_module =True if desired. \n ")
+
+
+
+
+# ==================================================================================================
+#  Judgemental Forecasting Analysis Module
+# ==================================================================================================
+if settings.run_judgemental_forecasting_analysis:
+    execute_script('8_judgemental_forecasting_analysis.py')
+else: 
+    print("Warning: No new judgemental forecasting analysis output has been generated, set run_judgemental_forecasting_analysis =True if desired. \n ")
 
 print('\nifo Forecast Evaluation completed successfully! \n')
 

@@ -67,10 +67,18 @@ run_naive_forecaster = True  # True or False
 run_quarterly_evaluation = True  # True or False
 
 # 5.: Decide whether to run the ifoCAST evaluation module
-run_ifoCAST_evaluation = False  # True or False
+run_ifoCAST_evaluation = True  # True or False
 
 # 6.: Decide whether to run the ifoCAST long-term evaluation module
-run_ifoCAST_long_term_evaluation = False  # True or False
+run_ifoCAST_long_term_evaluation = True  # True or False
+
+# 7. Decide whether to run the forecat enhancement module
+run_forecast_enhancement_module = True  # True or False, requieres data from module 6
+
+# 8. Run Judgemental Forecasting Analysis Module
+run_judgemental_forecasting_analysis = True  # True or False
+
+
 
 
 ## Decide whether to overwrite previous output (always overwriten if same functionality is executed)
