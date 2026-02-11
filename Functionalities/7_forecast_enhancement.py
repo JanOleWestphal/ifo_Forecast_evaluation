@@ -284,52 +284,7 @@ joint_nowcast_base_df = joint_nowcast_df.copy()
 
 """NOTE: all rows are indexed by latest date of quarter"""
 
-
-def filter_df_by_datetime_index(
-    df: pd.DataFrame,
-    start: Optional[Union[str, pd.Timestamp]] = None,
-    end: Optional[Union[str, pd.Timestamp]] = None,
-) -> pd.DataFrame:
-    
-    """
-    Filter a DataFrame by applying lower and/or upper datetime bounds to its index.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Input DataFrame with a DatetimeIndex (or index convertible to datetime).
-    start : str or pandas.Timestamp, optional
-        Lower bound (inclusive). Rows with index < start are dropped.
-    end : str or pandas.Timestamp, optional
-        Upper bound (inclusive). Rows with index > end are dropped.
-
-    Returns
-    -------
-    pandas.DataFrame
-        Filtered DataFrame.
-
-    Notes
-    -----
-    - Bounds are inclusive.
-    - If start or end is None, that side is left unfiltered.
-    - The index is coerced to pandas.DatetimeIndex if needed.
-    """
-
-    out = df.copy()
-    out.index = pd.to_datetime(out.index)
-
-    if start is not None:
-        start = pd.to_datetime(start)
-        out = out.loc[out.index >= start]
-
-    if end is not None:
-        end = pd.to_datetime(end)
-        out = out.loc[out.index <= end]
-
-    return out
-
-
-## Adjust filter if needed
+## Adjust filter if needed, boundary inclusive
 joint_nowcast_df = filter_df_by_datetime_index(joint_nowcast_df, '2000-01-01', '2100-01-01')
 #show(joint_nowcast_df)
 
@@ -405,72 +360,8 @@ joint_nowcast_df.to_excel(
 #                                  CALCULATE ERROR STATISTICS                                      #
 # -------------------------------------------------------------------------------------------------#
 
-def error_columns_summary(df, prefix="error"):
-    """
-    Compute error statistics for all columns starting with `prefix`.
-
-    Statistics computed per column:
-        ME   : mean error
-        MAE  : mean absolute error
-        MSE  : mean squared error
-        RMSE : root mean squared error
-        SE   : standard error of the mean error
-        N    : number of non-missing observations
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Input DataFrame containing error columns.
-    prefix : str, default="error"
-        Prefix identifying error columns.
-
-    Returns
-    -------
-    pandas.DataFrame
-        DataFrame indexed by error column name with columns:
-        ["ME", "MAE", "MSE", "RMSE", "SE", "N"]
-    """
-
-    rows = []
-
-    for col in df.columns:
-        if not col.startswith(prefix):
-            continue
-
-        e = df[col].dropna()
-        n = len(e)
-
-        if n == 0:
-            stats = dict(ME=np.nan, MAE=np.nan, MSE=np.nan,
-                         RMSE=np.nan, SE=np.nan, N=0)
-        else:
-            me = e.mean()
-            mse = (e ** 2).mean()
-            stats = dict(
-                ME=me,
-                MAE=e.abs().mean(),
-                MSE=mse,
-                RMSE=np.sqrt(mse),
-                SE=e.std(ddof=1) / np.sqrt(n) if n > 1 else np.nan,
-                N=n,
-            )
-
-        rows.append(pd.Series(stats, name=col))
-
-    summary_df = pd.DataFrame(rows)
-
-    # Rescale and Rename
-    summary_df["N"] = summary_df["N"].astype("Int64")
-    summary_df.index = summary_df.index.astype(str).str.replace(
-        "^error_realized_minus_", "", regex=True
-    )
-
-    return summary_df
-
-
-
 ## Obtain error staistics
-nowcast_error_summary_df = error_columns_summary(joint_nowcast_df)
+nowcast_error_summary_df = error_columns_summary_nowcast(joint_nowcast_df)
 
 #show(nowcast_error_summary_df)
 
