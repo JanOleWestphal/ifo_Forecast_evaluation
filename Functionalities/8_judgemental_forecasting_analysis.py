@@ -303,8 +303,8 @@ AR_nowcasts = nowcast_builder(df_ar2, colname="AR2_nowcast")
 
 ## Call merge_quarterly_dfs_dropna() from helperfunctions
 joint_nowcast_df = merge_quarterly_dfs_dropna(
-    dfs= [qoq_first_eval, ifo_judgemental_nowcasts, ifoCAST_nowcast, AR_nowcasts ],
-    col_names=['realized', 'judgemental', 'naiveAR2', 'ifoCast']
+    dfs= [qoq_first_eval, ifo_judgemental_nowcasts, ifoCAST_nowcast, AR_nowcasts],
+    col_names=['realized', 'judgemental', 'ifoCast', 'naiveAR2']
 )
 
 # Re-align to mid-quarter dates to ensure consistency after merge
@@ -347,7 +347,7 @@ def add_error_columns(df, prefix="error"):
     first_col = df.columns[0]
 
     for col in df.columns[1:]:
-        df[f"{prefix}_{first_col}_minus_{col}"] = df[first_col] - df[col]
+        df[f"{prefix}_{first_col}_minus_{col}"] = df[col] - df[first_col] 
 
     return df
 
@@ -478,7 +478,7 @@ _classify_derivations(joint_nowcast_df, b_col="ifoCast", suffix="ifoCast")
 # -------------------------------------------------------------------------------------------------#
 _classify_derivations(joint_nowcast_df, b_col="naiveAR2", suffix="AR2")
 
-# show(joint_nowcast_df)
+#show(joint_nowcast_df)
 
 
 
@@ -501,6 +501,7 @@ base_cols = [
 # ---- ifoCast subset ----
 ifo_cols = [c for c in judgment_eval_df_joint .columns if "ifoCast" in c]
 judgment_eval_df_ifoCast = judgment_eval_df_joint [base_cols + ifo_cols].copy()
+#show(judgment_eval_df_ifoCast)
 
 # ---- AR subset (matches AR / naiveAR2 / derivation_from_AR etc.) ----
 ar_cols = [c for c in judgment_eval_df_joint .columns if "AR" in c]
@@ -512,7 +513,7 @@ judgment_eval_df_joint.to_excel(os.path.join(table_folder, "judgemental_derivati
 judgment_eval_df_ifoCast.to_excel(os.path.join(table_folder, "judgemental_derivations_ifoCast.xlsx"))
 judgment_eval_df_AR.to_excel(os.path.join(table_folder, "judgemental_derivations_AR2.xlsx"))
 
-print('\nData processing complete. Now proceeding to analysis and visualizations.\n')
+print('\nData processing complete. Now proceeding to analysis and visualizations!\n')
 
 
 
@@ -531,10 +532,397 @@ print('\nData processing complete. Now proceeding to analysis and visualizations
 # -------------------------------------------------------------------------------------------------#
 
 
+# =================================================================================================#
+#                                        Builder Functions                                         #
+# =================================================================================================#
+
+## HELPER
+
+def _infer_baseline_spec(df: pd.DataFrame) -> Dict[str, str]:
+    """
+    Infer which baseline the df refers to (ifoCast vs AR2) and return column spec.
+    Expects one of:
+      - ifoCast columns present, incl. derivation_from_ifoCast, r_less_ifoCast
+      - AR2 columns present, incl. derivation_from_AR, r_less_AR2 (baseline series is naiveAR2)
+    """
+    cols = set(df.columns)
+
+    if "ifoCast" in cols or any("ifoCast" in c for c in cols):
+        return {
+            "baseline_label": "ifoCast",
+            "shock_col": "r_less_ifoCast",
+            "derivation_col": "derivation_from_ifoCast",
+            "ni_lin_col": "net_improvement_jdg_ifoCast_lin",
+            "ni_quad_col": "net_improvement_jdg_ifoCast_quad",
+        }
+
+    # AR2 case (baseline series column is naiveAR2; classification uses r_less_AR2)
+    if "naiveAR2" in cols or any("AR" in c for c in cols) or any("AR2" in c for c in cols):
+        return {
+            "baseline_label": "AR2",
+            "shock_col": "r_less_AR2",
+            "derivation_col": "derivation_from_AR",
+            "ni_lin_col": "net_improvement_jdg_AR_lin",
+            "ni_quad_col": "net_improvement_jdg_AR_quad",
+        }
+
+    raise ValueError("Could not infer baseline. Expected ifoCast- or AR(2)-related columns.")
+
+
+## Statistics Table builder
+
+def _generate_summary_statistics(df: pd.DataFrame, baseline_label: str, shock_filter: Optional[bool] = None) -> dict:
+    """
+    Generate summary statistics for a judgemental evaluation dataframe.
+    
+    Args:
+        df: DataFrame with columns for shocks, errors, improvements, adjustments
+        baseline_label: "ifoCast" or "AR2"
+        shock_filter: None for overall, True for negative shocks only, False for positive shocks only
+    
+    Returns:
+        Dictionary with summary statistics
+    """
+    spec = _infer_baseline_spec(df)
+    shock_col = spec["shock_col"]
+    ni_lin_col = spec["ni_lin_col"]
+    ni_quad_col = spec["ni_quad_col"]
+    
+    # Determine error columns based on baseline
+    if baseline_label == "ifoCast":
+        error_jdg_col = "error_realized_minus_judgemental"
+        error_baseline_col = "error_realized_minus_ifoCast"
+        adjustment_col = "j_less_ifoCast"
+        improvement_col = "j_diff_less_ifoCast_diff"
+    else:  # AR2
+        error_jdg_col = "error_realized_minus_judgemental"
+        error_baseline_col = "error_realized_minus_naiveAR2"
+        adjustment_col = "j_less_AR2"
+        improvement_col = "j_diff_less_AR2_diff"
+    
+    # Remove rows with NaN values for calculations
+    df_clean = df.dropna(subset=[shock_col, error_jdg_col, error_baseline_col, 
+                                   ni_lin_col, ni_quad_col, adjustment_col, improvement_col])
+    
+    # Apply shock filter if specified
+    if shock_filter is not None:
+        shock_series_bool = df_clean[shock_col].astype(bool)
+        if shock_filter:
+            # Negative shocks (r < baseline)
+            df_clean = df_clean[shock_series_bool]
+            subsample_label = "Negative Shocks"
+        else:
+            # Positive shocks (r >= baseline)
+            df_clean = df_clean[~shock_series_bool]
+            subsample_label = "Positive Shocks"
+    else:
+        subsample_label = "Overall"
+    
+    # Shock counts
+    shock_series = df_clean[shock_col].astype(bool)
+    negative_shocks = shock_series.sum()
+    positive_shocks = (~shock_series).sum()
+    
+    # Average shock size (absolute error)
+    avg_jdg_error = df_clean[error_jdg_col].abs().mean()
+    avg_baseline_error = df_clean[error_baseline_col].abs().mean()
+    
+    # Average net improvements
+    avg_ni_lin = df_clean[ni_lin_col].mean()
+    avg_ni_quad = df_clean[ni_quad_col].mean()
+    
+    # Adjustment counts (j_less_baseline)
+    adjustment_series = df_clean[adjustment_col].astype(bool)
+    adjustments_below_baseline = adjustment_series.sum()
+    adjustments_above_baseline = (~adjustment_series).sum()
+    
+    # Improvement counts (times adjustments led to improvements)
+    improvement_series = df_clean[improvement_col].astype(bool)
+    successful_improvements = improvement_series.sum()
+    unsuccessful_adjustments = (~improvement_series).sum()
+    
+    return {
+        "Baseline": baseline_label,
+        "Subsample": subsample_label,
+        "Negative Shocks (r < baseline)": int(negative_shocks),
+        "Positive Shocks (r >= baseline)": int(positive_shocks),
+        "Avg Judgemental Error (abs)": round(avg_jdg_error, 4),
+        "Avg Baseline Error (abs)": round(avg_baseline_error, 4),
+        "Avg Net Improvement (Linear)": round(avg_ni_lin, 4),
+        "Avg Net Improvement (Quadratic)": round(avg_ni_quad, 4),
+        "Adjustments Below Baseline (j < b)": int(adjustments_below_baseline),
+        "Adjustments Above Baseline (j >= b)": int(adjustments_above_baseline),
+        "Adjustments Reducing Error (|j-r| < |b-r|)": int(successful_improvements),
+        "Adjustments Increasing Error": int(unsuccessful_adjustments),
+        "Total Observations": len(df_clean),
+    }
+
 
 # =================================================================================================#
-#                                    Obtain Summary Statistics                                     #
+#                                    Generate Summary Statistics                                   #
 # =================================================================================================#
+
+# Define visualization function first
+def visualize_summary_statistics(df: pd.DataFrame, save_folder: str | Path) -> None:
+    """
+    Create comprehensive visualizations of summary statistics.
+    
+    Args:
+        df: Summary statistics DataFrame
+        save_folder: Directory to save plots
+    """
+    save_folder = Path(save_folder)
+    save_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Prepare data: separate by baseline and align subsample order
+    df_ifoCast = df[df['Baseline'] == 'ifoCast'].copy()
+    df_AR2 = df[df['Baseline'] == 'AR2'].copy()
+
+    preferred_subsample_order = ["Overall", "Negative Shocks", "Positive Shocks"]
+    present_subsamples = df["Subsample"].dropna().unique().tolist()
+    subsamples = [s for s in preferred_subsample_order if s in present_subsamples]
+    subsamples.extend([s for s in present_subsamples if s not in subsamples])
+
+    df_ifoCast = df_ifoCast.set_index("Subsample").reindex(subsamples).reset_index()
+    df_AR2 = df_AR2.set_index("Subsample").reindex(subsamples).reset_index()
+    
+    # ---- PLOT 1: Sample sizes across subsamples ----
+    fig, ax = plt.subplots(figsize=(10, 5))
+    
+    x_pos = np.arange(len(subsamples))
+    width = 0.35
+    
+    ax.bar(x_pos - width/2, df_ifoCast['Total Observations'].values, width, label='ifoCast', alpha=0.8)
+    ax.bar(x_pos + width/2, df_AR2['Total Observations'].values, width, label='AR2', alpha=0.8)
+    
+    ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Number of Observations', fontsize=11, fontweight='bold')
+    ax.set_title('Sample Sizes by Subsample and Baseline', fontsize=12, fontweight='bold')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(subsamples)
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(save_folder / 'summary_sample_sizes.png', dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    
+    # ---- PLOT 2: Average Errors + Linear Improvement (side-by-side baselines) ----
+    fig, axes = plt.subplots(1, 2, figsize=(16, 5), sharey=True)
+    width = 0.25
+
+    # Left: ifoCast baseline
+    axes[0].bar(
+        x_pos - width,
+        df_ifoCast['Avg Judgemental Error (abs)'].values,
+        width,
+        label='Avg |judgemental - realized|',
+        alpha=0.85,
+        color='steelblue',
+    )
+    axes[0].bar(
+        x_pos,
+        df_ifoCast['Avg Baseline Error (abs)'].values,
+        width,
+        label='Avg |ifoCast - realized|',
+        alpha=0.85,
+        color='darkorange',
+    )
+    axes[0].bar(
+        x_pos + width,
+        df_ifoCast['Avg Net Improvement (Linear)'].values,
+        width,
+        label='Avg net improvement (linear)',
+        alpha=0.85,
+        color='seagreen',
+    )
+    axes[0].axhline(0, color='black', linestyle='-', linewidth=0.8)
+    axes[0].set_xlabel('Subsample', fontsize=11, fontweight='bold')
+    axes[0].set_ylabel('Average Value', fontsize=11, fontweight='bold')
+    axes[0].set_title('ifoCast Baseline', fontsize=12, fontweight='bold')
+    axes[0].set_xticks(x_pos)
+    axes[0].set_xticklabels(subsamples)
+    axes[0].grid(axis='y', alpha=0.3)
+    axes[0].legend(fontsize=9, loc='upper left')
+
+    # Right: AR2 baseline
+    axes[1].bar(
+        x_pos - width,
+        df_AR2['Avg Judgemental Error (abs)'].values,
+        width,
+        label='Avg |judgemental - realized|',
+        alpha=0.85,
+        color='steelblue',
+    )
+    axes[1].bar(
+        x_pos,
+        df_AR2['Avg Baseline Error (abs)'].values,
+        width,
+        label='Avg |AR2 - realized|',
+        alpha=0.85,
+        color='darkorange',
+    )
+    axes[1].bar(
+        x_pos + width,
+        df_AR2['Avg Net Improvement (Linear)'].values,
+        width,
+        label='Avg net improvement (linear)',
+        alpha=0.85,
+        color='seagreen',
+    )
+    axes[1].axhline(0, color='black', linestyle='-', linewidth=0.8)
+    axes[1].set_xlabel('Subsample', fontsize=11, fontweight='bold')
+    axes[1].set_title('AR2 Baseline', fontsize=12, fontweight='bold')
+    axes[1].set_xticks(x_pos)
+    axes[1].set_xticklabels(subsamples)
+    axes[1].grid(axis='y', alpha=0.3)
+    axes[1].legend(fontsize=9, loc='upper left')
+
+    fig.suptitle('Average Forecast Errors by Subsample and Baseline', fontsize=12, fontweight='bold')
+    fig.tight_layout()
+    fig.savefig(save_folder / 'summary_average_errors_by_baseline.png', dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    
+    # ---- PLOT 3: Net Improvements (Linear) ----
+    fig, ax = plt.subplots(figsize=(12, 5))
+    
+    ax.bar(x_pos - width/2, df_ifoCast['Avg Net Improvement (Linear)'].values, width, 
+           label='ifoCast', alpha=0.8, color='steelblue')
+    ax.bar(x_pos + width/2, df_AR2['Avg Net Improvement (Linear)'].values, width, 
+           label='AR2', alpha=0.8, color='darkorange')
+    
+    ax.axhline(0, color='black', linestyle='-', linewidth=0.8)
+    ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Average Linear Net Improvement', fontsize=11, fontweight='bold')
+    ax.set_title('Judgemental vs Baseline Linear Improvements by Subsample', fontsize=12, fontweight='bold')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(subsamples)
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(save_folder / 'summary_net_improvement_linear.png', dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    
+    # ---- PLOT 4: Net Improvements (Quadratic) ----
+    fig, ax = plt.subplots(figsize=(12, 5))
+    
+    ax.bar(x_pos - width/2, df_ifoCast['Avg Net Improvement (Quadratic)'].values, width, 
+           label='ifoCast', alpha=0.8, color='steelblue')
+    ax.bar(x_pos + width/2, df_AR2['Avg Net Improvement (Quadratic)'].values, width, 
+           label='AR2', alpha=0.8, color='darkorange')
+    
+    ax.axhline(0, color='black', linestyle='-', linewidth=0.8)
+    ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Average Quadratic Net Improvement', fontsize=11, fontweight='bold')
+    ax.set_title('Judgemental vs Baseline Quadratic Improvements by Subsample', fontsize=12, fontweight='bold')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(subsamples)
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(save_folder / 'summary_net_improvement_quadratic.png', dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    
+    # ---- PLOT 5: Adjustment Success Rates ----
+    fig, ax = plt.subplots(figsize=(12, 5))
+    
+    # Calculate success rates (percentage of adjustments that reduced error)
+    df_ifoCast['Success Rate (%)'] = (df_ifoCast['Adjustments Reducing Error (|j-r| < |b-r|)'] / 
+                                       (df_ifoCast['Adjustments Reducing Error (|j-r| < |b-r|)'] + 
+                                        df_ifoCast['Adjustments Increasing Error'])) * 100
+    df_AR2['Success Rate (%)'] = (df_AR2['Adjustments Reducing Error (|j-r| < |b-r|)'] / 
+                                  (df_AR2['Adjustments Reducing Error (|j-r| < |b-r|)'] + 
+                                   df_AR2['Adjustments Increasing Error'])) * 100
+    
+    ax.bar(x_pos - width/2, df_ifoCast['Success Rate (%)'].values, width, 
+           label='ifoCast', alpha=0.8, color='green')
+    ax.bar(x_pos + width/2, df_AR2['Success Rate (%)'].values, width, 
+           label='AR2', alpha=0.8, color='red')
+    
+    ax.axhline(50, color='black', linestyle='--', linewidth=1, alpha=0.5, label='50% (Random)')
+    ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Success Rate (%)', fontsize=11, fontweight='bold')
+    ax.set_title('Adjustment Success Rates (% reducing error) by Subsample', fontsize=12, fontweight='bold')
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(subsamples)
+    ax.set_ylim([0, 100])
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(save_folder / 'summary_adjustment_success_rates.png', dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    
+    # ---- PLOT 6: Adjustment Direction Distribution ----
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    
+    # ifoCast
+    adjustment_labels = ['Below Baseline\n(j < b)', 'Above Baseline\n(j >= b)']
+    for idx, subsample in enumerate(subsamples):
+        below = df_ifoCast[df_ifoCast['Subsample'] == subsample]['Adjustments Below Baseline (j < b)'].values[0]
+        above = df_ifoCast[df_ifoCast['Subsample'] == subsample]['Adjustments Above Baseline (j >= b)'].values[0]
+        
+        axes[0].bar(idx, below, label='Below' if idx == 0 else '', alpha=0.8, color='steelblue')
+        axes[0].bar(idx, above, bottom=below, label='Above' if idx == 0 else '', alpha=0.8, color='lightcoral')
+    
+    axes[0].set_ylabel('Number of Adjustments', fontsize=11, fontweight='bold')
+    axes[0].set_title('Adjustment Direction Distribution - ifoCast Baseline', fontsize=12, fontweight='bold')
+    axes[0].set_xticks(np.arange(len(subsamples)))
+    axes[0].set_xticklabels(subsamples)
+    axes[0].legend()
+    axes[0].grid(axis='y', alpha=0.3)
+    
+    # AR2
+    for idx, subsample in enumerate(subsamples):
+        below = df_AR2[df_AR2['Subsample'] == subsample]['Adjustments Below Baseline (j < b)'].values[0]
+        above = df_AR2[df_AR2['Subsample'] == subsample]['Adjustments Above Baseline (j >= b)'].values[0]
+        
+        axes[1].bar(idx, below, label='Below' if idx == 0 else '', alpha=0.8, color='steelblue')
+        axes[1].bar(idx, above, bottom=below, label='Above' if idx == 0 else '', alpha=0.8, color='lightcoral')
+    
+    axes[1].set_ylabel('Number of Adjustments', fontsize=11, fontweight='bold')
+    axes[1].set_title('Adjustment Direction Distribution - AR2 Baseline', fontsize=12, fontweight='bold')
+    axes[1].set_xticks(np.arange(len(subsamples)))
+    axes[1].set_xticklabels(subsamples)
+    axes[1].legend()
+    axes[1].grid(axis='y', alpha=0.3)
+    
+    fig.tight_layout()
+    fig.savefig(save_folder / 'summary_adjustment_directions.png', dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    
+    print(f"\nSummary statistics visualizations saved to {save_folder}")
+
+
+# Generate summary statistics for both baselines with subsamples
+summary_stats_list = []
+
+# ifoCast baseline
+summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_ifoCast, "ifoCast", shock_filter=None))
+summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_ifoCast, "ifoCast", shock_filter=True))
+summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_ifoCast, "ifoCast", shock_filter=False))
+
+# AR2 baseline
+summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_AR, "AR2", shock_filter=None))
+summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_AR, "AR2", shock_filter=True))
+summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_AR, "AR2", shock_filter=False))
+
+# Create summary statistics DataFrame
+summary_stats_df = pd.DataFrame(summary_stats_list)
+
+print(f"\nSummary Statistics:")
+#print("\n" + summary_stats_df.to_string())
+
+# Generate visualizations FIRST
+visualize_summary_statistics(summary_stats_df, graph_folder_derivations)
+
+# Save to Excel
+summary_stats_output_path = os.path.join(table_folder, "Summary_Statistics.xlsx")
+summary_stats_df.to_excel(summary_stats_output_path, index=False, sheet_name="Summary Statistics")
+print(f"\nSummary Statistics saved to {summary_stats_output_path}")
+
+
+
+
+
 
 
 
@@ -569,37 +957,7 @@ print('\nData processing complete. Now proceeding to analysis and visualizations
 # Error Bar Plotter
 # -------------------------------------------------------------------------------------------------#
 
-def _infer_baseline_spec(df: pd.DataFrame) -> Dict[str, str]:
-    """
-    Infer which baseline the df refers to (ifoCast vs AR2) and return column spec.
-    Expects one of:
-      - ifoCast columns present, incl. derivation_from_ifoCast, r_less_ifoCast
-      - AR2 columns present, incl. derivation_from_AR, r_less_AR2 (baseline series is naiveAR2)
-    """
-    cols = set(df.columns)
-
-    if "ifoCast" in cols or any("ifoCast" in c for c in cols):
-        return {
-            "baseline_label": "ifoCast",
-            "shock_col": "r_less_ifoCast",
-            "derivation_col": "derivation_from_ifoCast",
-            "ni_lin_col": "net_improvement_jdg_ifoCast_lin",
-            "ni_quad_col": "net_improvement_jdg_ifoCast_quad",
-        }
-
-    # AR2 case (baseline series column is naiveAR2; classification uses r_less_AR2)
-    if "naiveAR2" in cols or any("AR" in c for c in cols) or any("AR2" in c for c in cols):
-        return {
-            "baseline_label": "AR2",
-            "shock_col": "r_less_AR2",
-            "derivation_col": "derivation_from_AR",
-            "ni_lin_col": "net_improvement_jdg_AR_lin",
-            "ni_quad_col": "net_improvement_jdg_AR_quad",
-        }
-
-    raise ValueError("Could not infer baseline. Expected ifoCast- or AR(2)-related columns.")
-
-
+## Reformat Helper
 def _format_quarterly_index(dt_index) -> list[str]:
     """
     Convert a datetime index to yyyy-Qx format for display.
@@ -613,7 +971,7 @@ def _format_quarterly_index(dt_index) -> list[str]:
     
     return [to_quarter_str(ts) for ts in dt_index]
 
-
+## MAIN PLOTTER FUNCTION
 def plot_judgemental_derivations_or_net_improvement(
     df: pd.DataFrame,
     kind: str,  # "derivation" or "net_improvement"
@@ -795,7 +1153,7 @@ def plot_judgemental_derivations_or_net_improvement(
 
         return out_paths
 
-
+## Plotter Zoomer
 def _apply_percentile_truncation(ax, data: np.ndarray, percentile: float) -> None:
     """
     Truncate y-axis symmetrically based on percentile.
@@ -826,10 +1184,9 @@ def _apply_percentile_truncation(ax, data: np.ndarray, percentile: float) -> Non
     ax.set_ylim(lower_bound, upper_bound)
 
 
-
-
-
-
+# =================================================================================================#
+#                                         Generate Plots                                           #
+# =================================================================================================#
 
 # -------------------------------------------------------------------------------------------------#
 # judgemental derivations against the ifoCAST df
@@ -869,7 +1226,7 @@ _ = plot_judgemental_derivations_or_net_improvement(
     graph_folder=graph_folder_derivations,
     header=None,  # custom headers now per metric (linear/quadratic)
     filename_prefix="net_improvement",
-    filename_suffix="truncated_95p",  # will append to filename
+    filename_suffix="t95p",  # will append to filename
     show=False,
     y_axis_percentile=95.0,  # Truncate at 95th percentile for outlier visibility
 )
@@ -899,7 +1256,7 @@ _ = plot_judgemental_derivations_or_net_improvement(
     graph_folder=graph_folder_derivations,
     header=None,  # custom headers now per metric (linear/quadratic)
     filename_prefix="net_improvement",
-    filename_suffix="truncated_95p",  # will append to filename
+    filename_suffix="t95p",  # will append to filename
     show=False,
     y_axis_percentile=95.0,  # Truncate at 95th percentile for outlier visibility
 )
@@ -1004,7 +1361,7 @@ def plot_error_comparison(
     
     title = f"Judgemental vs {benchmark_label} Forecast Errors by Quarter"
     ax.set_title(title)
-    ax.set_ylabel("Error (realized - forecast)")
+    ax.set_ylabel("Error (forecast - realized)")
     
     # Apply y-axis truncation if requested
     if y_axis_percentile is not None:
@@ -1044,7 +1401,7 @@ _ = plot_error_comparison(
     benchmark_label="ifoCast",
     graph_folder=graph_folder_errors,
     filename_prefix="error_comparison",
-    filename_suffix="truncated_95p",
+    filename_suffix="t95p",
     show=False,
     y_axis_percentile=95.0,
 )
@@ -1075,7 +1432,7 @@ _ = plot_error_comparison(
     benchmark_label="AR2",
     graph_folder=graph_folder_errors,
     filename_prefix="error_comparison",
-    filename_suffix="truncated_95p",
+    filename_suffix="t95p",
     show=False,
     y_axis_percentile=95.0,
 )
@@ -1097,9 +1454,21 @@ _ = plot_error_comparison(
 
 
 
+
+
+
+
+
+
+
+
+
 # --------------------------------------------------------------------------------------------------
 print(f" \n ifo Judgemental Forecasting Analysis Module complete! \n",f"Find Result Graphs in {graph_folder} and \nResult Tables in {table_folder}\n")
 # --------------------------------------------------------------------------------------------------
+
+
+
 
 
 # -------------------------------------------------------------------------------------------------#
