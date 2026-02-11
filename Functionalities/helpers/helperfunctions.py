@@ -158,6 +158,43 @@ def merge_quarterly_dfs_dropna(
 
 
 
+# ==================================================================================================
+# Helper functions for mid-quarterly alignment
+# ==================================================================================================
+
+def normalize_to_mid_quarter(dates):
+    """
+    Convert any datetime-like input to mid-quarter dates.
+    Q1 -> Feb 15, Q2 -> May 15, Q3 -> Aug 15, Q4 -> Nov 15
+    
+    Args:
+        dates: DatetimeIndex, Series, or Index
+    
+    Returns:
+        DatetimeIndex with normalized mid-quarter dates
+    """
+    dt_index = pd.to_datetime(dates)
+    quarters = dt_index.to_period('Q')
+    
+    # Map quarter to mid-month (15th of middle month)
+    mid_months = {1: 2, 2: 5, 3: 8, 4: 11}
+    
+    def get_mid_quarter_date(period):
+        year = period.year
+        month = mid_months[period.quarter]
+        return pd.Timestamp(year=year, month=month, day=15)
+    
+    return pd.DatetimeIndex([get_mid_quarter_date(q) for q in quarters])
+
+
+def align_df_to_mid_quarters(df):
+    """Normalize DataFrame index to mid-quarter dates."""
+    df_copy = df.copy()
+    df_copy.index = normalize_to_mid_quarter(df.index)
+    return df_copy
+
+
+
 
 # ==================================================================================================
 # Select Evaluation timeframe
@@ -333,7 +370,14 @@ def load_excels_to_dict(folder_path, strip_string=None, filter=None):
         if strip_string:
             name = name.replace(strip_string, '')
         
-        dfs[name] = pd.read_excel(file, index_col=0)
+        df = pd.read_excel(file, index_col=0)
+        # Align to mid-quarter dates if index contains datetime-like data
+        try:
+            df = align_df_to_mid_quarters(df)
+        except (TypeError, ValueError):
+            # If alignment fails, keep original index
+            pass
+        dfs[name] = df
     return dfs
 
 

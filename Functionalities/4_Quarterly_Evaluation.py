@@ -278,18 +278,21 @@ eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_s
 ## First Releases
 qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
 qoq_first_eval = pd.read_excel(qoq_path_first, index_col=0)
+qoq_first_eval = align_df_to_mid_quarters(qoq_first_eval)  # Align to mid-quarter dates
 #show(qoq_first_eval)
 
 
 ## Latest Releases
 qoq_path_latest= os.path.join(eval_path, 'latest_release_qoq_GDP.xlsx')
 qoq_latest_eval = pd.read_excel(qoq_path_latest, index_col=0)
+qoq_latest_eval = align_df_to_mid_quarters(qoq_latest_eval)  # Align to mid-quarter dates
 #show(qoq_latest_eval)
 
 
 ## Revision
 qoq_path_rev = os.path.join(eval_path, 'revision_qoq_GDP.xlsx')
 qoq_rev = pd.read_excel(qoq_path_rev, index_col=0)
+qoq_rev = align_df_to_mid_quarters(qoq_rev)  # Align to mid-quarter dates
 
 
 
@@ -847,7 +850,7 @@ if settings.evaluate_quarterly_gdp_forecasts:
 if settings.evaluate_forecast_components:
     
     print("\n\n" + "="*100)
-    print("COMPONENT-LEVEL EVALUATION")
+    print("             COMPONENT-LEVEL EVALUATION")
     print("="*100 + "\n")
     
     # ==================================================================================================

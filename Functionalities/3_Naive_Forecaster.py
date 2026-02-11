@@ -298,6 +298,8 @@ df_qoq_gdp= pd.read_excel(df_qoq_path, index_col=0)
 # Convert quarter strings (e.g., '1970Q1') back to datetime if they're still strings
 if df_qoq_gdp.index.dtype == 'object':  # Only convert if index is string type
     df_qoq_gdp.index = pd.PeriodIndex(df_qoq_gdp.index, freq='Q').to_timestamp()
+# Align to mid-quarter dates
+df_qoq_gdp = align_df_to_mid_quarters(df_qoq_gdp)
 #show(df_qoq_gdp)  # uncomment for debugging
 
 
@@ -609,10 +611,12 @@ def retrieve_qoq_predictions(qoq_forecast_df, model, average_horizon=None, AR_or
     # Match on quarterly basis: Ensure index and columns are datetime (quarterly aligned)
     naive_qoq_forecasts.index = pd.to_datetime(naive_qoq_forecasts.index).to_period('Q').to_timestamp()
     naive_qoq_forecasts.columns = pd.to_datetime(naive_qoq_forecasts.columns).to_period('Q').to_timestamp()
+    # Align to mid-quarter dates
+    naive_qoq_forecasts = align_df_to_mid_quarters(naive_qoq_forecasts)
 
     # Shift each column so that its first non-NA value aligns with its column date
     for col in naive_qoq_forecasts.columns:
-        col_date = pd.to_datetime(col).to_period('Q').to_timestamp()
+        col_date = normalize_to_mid_quarter([col])[0]
 
         # Check if column date exists in index
         if col_date in naive_qoq_forecasts.index:
@@ -1153,8 +1157,9 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
                 # Combine diagnostics and forecasts
                 AR_summary = pd.concat([r.to_frame().T for r in summary_rows], ignore_index=True)
                 qoq_forecast_df = pd.concat(forecast_cols, axis=1)
-                # Filter out empty DataFrames before concatenation
-                index_dfs_filtered = [df for df in index_dfs if not df.empty]
+                # Filter out empty DataFrames and drop all-NA columns before concatenation
+                index_dfs_filtered = [df.dropna(axis=1, how='all') for df in index_dfs if not df.empty]
+                index_dfs_filtered = [df for df in index_dfs_filtered if not df.empty]
                 qoq_forecast_index_df = pd.concat(index_dfs_filtered, ignore_index=True) if index_dfs_filtered else pd.DataFrame()
                 # show(qoq_forecast_df)
 
