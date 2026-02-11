@@ -161,8 +161,6 @@ os.makedirs(component_forecast_output_dir, exist_ok=True)
 
 
 
-
-
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                                  DATA PROCESSING - Functions                                     #
@@ -746,7 +744,6 @@ if settings.extend_rt_data_backwards:
     # Ensure proper datetime formats
     gdp_combined = gdp_combined.copy()
     gdp_combined.index = pd.to_datetime(gdp_combined.index).to_period('Q').to_timestamp()
-    gdp_combined = align_df_to_mid_quarters(gdp_combined)  # Align to mid-quarter dates
     gdp_combined.columns = pd.to_datetime(gdp_combined.columns)
 
     # Select the first datetime column
@@ -856,283 +853,6 @@ if settings.run_gva_evaluation:
 
 
 
-# -------------------------------------------------------------------------------------------------#
-# =================================================================================================#
-#                              SIMULATE COMPONENT-LEVEL RT DATA                                    #
-# =================================================================================================#
-# -------------------------------------------------------------------------------------------------#
-
-""" 
-Rescale the component-level data from excel file to match Bundesbank real-time data format, reapply 
-the same processing pipeline, store results
-
--> output_dir_ts_components, component_forecast_output_dir
-
-NOTE: component-level date is already in qoq-format
-"""
-
-
-
-
-
-# =================================================================================================#
-#                           SIMULATED QOQ and YOY Realtime Data                                    #
-# =================================================================================================#
-
-
-component_input_dir = os.path.join(wd, "0_0_Data", "2_Processed_Data", "3_gdp_component_forecast")
-
-
-# --------------------------------------------------------------------------------------------------
-# Helpers
-# --------------------------------------------------------------------------------------------------
-
-def fourth_token_from_filename(path: str) -> str:
-    """
-    Expect filenames like: ifo_qoq_forecasts_CONSTR.xlsx
-    Return: CONSTR (3rd underscore-separated token).
-    """
-    base = os.path.splitext(os.path.basename(path))[0]
-    parts = base.split("_")
-    if len(parts) < 4:
-        raise ValueError(f"Unexpected filename format (need at least 4 '_' tokens): {base}")
-    return parts[3]
-
-
-
-def fill_rowwise_left_on_na_after_start(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    For each row:
-      - Find first non-NA (start).
-      - For all subsequent columns moving right:
-          if cell is NA -> replace with value from immediate left column (same row).
-          else keep as is.
-    """
-    out = df.copy()
-
-    for idx in out.index:
-        row = out.loc[idx]
-        vals = row.to_numpy()
-
-        # first non-NA
-        start_pos = None
-        for j, v in enumerate(vals):
-            if pd.notna(v):
-                start_pos = j
-                break
-
-        if start_pos is None:
-            continue
-
-        for j in range(start_pos + 1, len(vals)):
-            if pd.isna(vals[j]):
-                vals[j] = vals[j - 1]
-
-        out.loc[idx] = vals
-
-    return out
-
-
-def filter_invalid_forecast_dates(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Remove observations where the row date (target quarter) is in the same quarter 
-    or later than the column date (publication/forecast date).
-    
-    Assumes rows are sorted chronologically (target dates) and columns are sorted 
-    chronologically (publication dates). Both should be datetime objects or convertible to datetime.
-    
-    Also drops any rows and columns that are completely empty (all NaN) after filtering.
-    
-    Returns a filtered DataFrame with only valid forecast observations.
-    """
-    if df is None or df.empty:
-        return df
-    
-    df_filtered = df.copy()
-    
-    # Convert index and columns to datetime if needed
-    try:
-        row_dates = pd.to_datetime(df_filtered.index)
-    except Exception:
-        row_dates = df_filtered.index
-    
-    try:
-        col_dates = pd.to_datetime(df_filtered.columns)
-    except Exception:
-        col_dates = df_filtered.columns
-    
-    # Create a mask for invalid cells (row_date >= col_date)
-    # These are cells where the target quarter is the same or later than publication date
-    invalid_mask = pd.DataFrame(False, index=df_filtered.index, columns=df_filtered.columns)
-    
-    for i, row_date in enumerate(row_dates):
-        for j, col_date in enumerate(col_dates):
-            if row_date >= col_date:
-                invalid_mask.iloc[i, j] = True
-    
-    # Set invalid cells to NaN
-    df_filtered[invalid_mask] = np.nan
-    
-    # Drop completely empty rows and columns (all NaN)
-    df_filtered = df_filtered.dropna(how='all').dropna(how='all', axis=1)
-    
-    return df_filtered
-
-
-def build_first_release_series_rowwise(df_input: pd.DataFrame) -> pd.DataFrame:
-    if df_input is None or df_input.empty:
-        out = pd.DataFrame({"value": []})
-        out.index.name = "date"
-        return out
-
-    df = df_input.copy()
-
-    # Ensure chronological order
-    try:
-        df = df.reindex(sorted(df.columns), axis=1)
-    except Exception:
-        pass
-    try:
-        df = df.sort_index()
-    except Exception:
-        pass
-
-    cols = list(df.columns)
-    if len(cols) == 0:
-        out = pd.DataFrame({"value": []})
-        out.index.name = "date"
-        return out
-
-    # Use np.nan-compatible dtype
-    out = pd.Series(np.nan, index=df.index, dtype="float64")
-
-    # Column 0: take all non-NAs
-    m0 = df[cols[0]].notna()
-    out.loc[m0] = pd.to_numeric(df.loc[m0, cols[0]], errors="coerce").to_numpy()
-
-    # Next columns: take only the "newly released" tail
-    for j in range(1, len(cols)):
-        prev_col = cols[j - 1]
-        cur_col = cols[j]
-
-        prev = df[prev_col]
-        na_mask = prev.isna()
-        if not na_mask.any():
-            continue
-
-        # first date where prev is NA (index assumed sorted)
-        start_pos = int(np.argmax(na_mask.to_numpy()))
-        start_date = df.index[start_pos]
-
-        cur_tail = df.loc[df.index >= start_date, cur_col]
-        # Ensure row is from the previous quarter or earlier relative to column
-        col_period = pd.Timestamp(cur_col).to_period('Q')
-        prev_quarter = col_period - 1
-        cur_tail = cur_tail[pd.to_datetime(cur_tail.index).to_period('Q') <= prev_quarter]
-        take_mask = cur_tail.notna()
-        if take_mask.any():
-            out.loc[cur_tail.index[take_mask]] = pd.to_numeric(cur_tail.loc[take_mask], errors="coerce").to_numpy()
-
-    result_df = out.dropna().to_frame("value")
-    result_df.index.name = "date"
-    result_df = align_df_to_mid_quarters(result_df)
-    return result_df
-
-
-# --------------------------------------------------------------------------------------------------
-# Main: process all Excel files in directory, all sheets
-# --------------------------------------------------------------------------------------------------
-excel_files = [f for f in os.listdir(component_input_dir) if f.lower().endswith(".xlsx")]
-
-for f in excel_files:
-    in_path = os.path.join(component_input_dir, f)
-    token = fourth_token_from_filename(in_path)
-
-    xls = pd.ExcelFile(in_path)
-
-    # QoQ RT output
-    out_path_qoq = os.path.join(output_dir_ts_components, f"qoq_rt_data_{token}.xlsx")
-    # YoY RT output
-    out_path_yoy = os.path.join(output_dir_ts_components, f"yoy_rt_data_{token}.xlsx")
-
-    # Evaluation outputs (first-release series)
-    os.makedirs(output_dir_eval_components, exist_ok=True)
-    out_path_eval_qoq = os.path.join(output_dir_eval_components, f"first_release_qoq_{token}.xlsx")
-    out_path_eval_yoy = os.path.join(output_dir_eval_components, f"first_release_yoy_{token}.xlsx")
-
-    # Collect combined data across sheets (one df per workbook type)
-    qoq_dfs = {}
-    yoy_dfs = {}
-
-    # --- read, fill, compute yoy; store per sheet for writing + for combined ---
-    for sheet in xls.sheet_names:
-        df = pd.read_excel(in_path, sheet_name=sheet)
-
-        if df.shape[1] >= 2:
-            df.set_index(df.columns[0], inplace=True)
-
-        df_filled = fill_rowwise_left_on_na_after_start(df)
-        df_yoy = get_yoy(df_filled)
-
-        qoq_dfs[sheet] = df_filled
-        yoy_dfs[sheet] = df_yoy
-
-    # --- filter invalid forecast dates for QoQ/YoY data (row_date must be later than col_date) ---
-    qoq_dfs = {sheet: filter_invalid_forecast_dates(df) for sheet, df in qoq_dfs.items()}
-    yoy_dfs = {sheet: filter_invalid_forecast_dates(df) for sheet, df in yoy_dfs.items()}
-
-    # --- write QoQ workbook ---
-    with pd.ExcelWriter(out_path_qoq, engine="openpyxl") as writer_qoq:
-        for sheet, df_filled in qoq_dfs.items():
-            df_filled.to_excel(writer_qoq, sheet_name=sheet, index=True)
-
-    # --- write YoY workbook ---
-    with pd.ExcelWriter(out_path_yoy, engine="openpyxl") as writer_yoy:
-        for sheet, df_yoy in yoy_dfs.items():
-            df_yoy.to_excel(writer_yoy, sheet_name=sheet, index=True)
-
-    # --- build "combined" dfs for evaluation series ---
-    # If there is only one sheet, combined == that sheet.
-    # If multiple sheets, stack them with a MultiIndex (sheet, date) to avoid collisions.
-    if len(qoq_dfs) == 1:
-        df_qoq_combined = next(iter(qoq_dfs.values()))
-        df_yoy_combined = next(iter(yoy_dfs.values()))
-    else:
-        df_qoq_combined = pd.concat(qoq_dfs, names=["sheet", "date"])
-        df_yoy_combined = pd.concat(yoy_dfs, names=["sheet", "date"])
-
-    # --- filter invalid forecast dates for evaluation series ---
-    df_qoq_combined = filter_invalid_forecast_dates(df_qoq_combined)
-    df_yoy_combined = filter_invalid_forecast_dates(df_yoy_combined)
-
-    # --- evaluation series (first-release) ---
-    first_release_qoq_df = build_first_release_series_rowwise(df_qoq_combined)
-    first_release_yoy_df = build_first_release_series_rowwise(df_yoy_combined)
-
-    # --- save evaluation series ---
-    first_release_qoq_df.to_excel(out_path_eval_qoq, index=True)
-    first_release_yoy_df.to_excel(out_path_eval_yoy, index=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1220,10 +940,60 @@ process_ifo_qoq_forecasts(ifo_qoq_raw, ifo_qoq_output_path)
 
 
 
-# ==================================================================================================
-#  COMPONENT-LEVEL FORECASTS
-# ==================================================================================================
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                           DATA PROCESSING - COMPONENT FORECASTS                                  #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+""" 
+Rescale the component-level data from excel file to match Bundesbank real-time data format, 
+reapply similar processing pipeline, store results
+
+-> output_dir_ts_components, component_forecast_output_dir
+
+NOTE: component-level date is already in qoq-format
+"""
+
+"""
+REQUIRED OUTPUTS:
+-> simulated rt_component_series w/o forecasts, used in the Naive Forecaster, 
+store to: wd, '0_0_Data', '2_Processed_Data', '1_rt_component_series'
+-> forecast series in the desiered format, required in evaluation module,
+store to: wd, '0_0_Data', '2_Processed_Data', '3_gdp_component_forecast'
+-> Evaluation series mx1 for all components, used in evlaution module
+store to: wd, '0_0_Data', '2_Processed_Data', '2_component_Evaluation_series'
+"""
+
+## INPUT
+# Source of the component data, Excel created in 2_1 out of the ifo forecast archive
+ifo_components_path = os.path.join( wd, "0_0_Data", "0_Forecast_Inputs", "1_ifo_quarterly_components",
+                                    "ifo_BIP_Komponenten.xlsx")
+
+if not os.path.exists(ifo_components_path):
+    raise FileNotFoundError(f"Missing input file: {ifo_components_path}")
+
+
+
+# =================================================================================================#
+#                             EXTRACT COMPONENT_LEVEL FORECASTS                                    #
+# =================================================================================================#
+
+## HELPER: turn sheet names into tokens used for filenaming
 def _safe_sheet_filename(sheet_name: str) -> str:
     # keep filenames portable
     s = re.sub(r"\s+", "_", sheet_name.strip())
@@ -1231,115 +1001,149 @@ def _safe_sheet_filename(sheet_name: str) -> str:
     return s or "sheet"
 
 
-def process_ifo_component_realtime(df_raw):
+## HELPER: Convert datetimes to quarters
+def _to_quarter(dt):
+    """Convert a datetime to (year, quarter) tuple for quarterly comparison."""
+    if pd.isna(dt):
+        return None
+    dt = pd.to_datetime(dt)
+    quarter = (dt.month - 1) // 3 + 1
+    return (dt.year, quarter)
+
+
+## HELPER: Convert quarters back to mid-quarter timestamp
+def _quarter_to_midquarter_timestamp(year, quarter):
+    """Convert (year, quarter) tuple to mid-quarter timestamp."""
+    month_map = {1: 2, 2: 5, 3: 8, 4: 11}
+    month = month_map[quarter]
+    dt = pd.Timestamp(year=year, month=month, day=15)
+    return dt
+
+
+## HELPER: Process raw component dataframe to extract real-time data, forecast series, and first release evaluation
+def process_ifo_component_realtime(df_raw_component):
     """
-    Process ifo component data to extract real-time data and first releases.
+    Process ifo component data to extract real-time data, forecast series, and first releases.
     
     Algorithm:
-    1. For each column, extract all non-NA values where row_date < col_date (real-time data)
-    2. Forward-fill: if a column's first entry is NA, take value from the column to the left
-    3. For first release: take the value from one quarter before the column date
+    1. Convert all dates to quarterly level (year, quarter tuples)
+    2. Build real-time df: for each column, keep only rows where row_quarter < col_quarter
+    3. Row-wise forward-fill: fill NAs by left neighbor if left neighbor is non-NA
+    4. Build forecast df: opposite of real-time - set to NaN where row_quarter < col_quarter (keep forecasts)
+    5. Build first release evaluation series: progression through columns, new observations each time
     
-    Returns: df_rt (real-time data), first_release_dict (first release values)
+    Returns: 
+        df_rt (real-time data with mid-quarter cols, original date rows)
+        df_forecast (forecast data with same structure)
+        first_release_eval_df (mx1 first release evaluation series)
     """
     # Set first column as index
-    if df_raw.shape[1] >= 2:
-        df_raw.set_index(df_raw.columns[0], inplace=True)
+    if df_raw_component.shape[1] >= 2:
+        df_raw_component.set_index(df_raw_component.columns[0], inplace=True)
     
-    # Convert index and columns to datetime
-    df_raw.index = pd.to_datetime(df_raw.index)
-    df_raw.columns = pd.to_datetime(df_raw.columns)
+    # Convert index and columns to datetime first
+    df_raw_component.index = pd.to_datetime(df_raw_component.index)
+    df_raw_component.columns = pd.to_datetime(df_raw_component.columns)
     
-    # 1. Build real-time data: for each column, keep only rows where row_date < col_date
-    df_rt = df_raw.copy()
-    for col in df_rt.columns:
-        col_date = col
-        # Set to NaN where row_date >= col_date (keep only dates strictly before column date)
-        invalid_rows = df_rt.index >= col_date
-        df_rt.loc[invalid_rows, col] = np.nan
-
-    # 2. Row-wise forward-fill (left-to-right across columns)
-    #    so that if a cell is NA and the previous (left) column has a value in the same row, copy it.
-    df_rt = df_rt.ffill(axis=1)
-
+    # Convert to quarters
+    row_quarters = df_raw_component.index.map(_to_quarter)
+    col_quarters = df_raw_component.columns.map(_to_quarter)
+    
+    # ============================================================================
+    # 1. Build real-time data: for each column, keep only rows where row_quarter < col_quarter
+    # ============================================================================
+    df_rt = df_raw_component.copy()
+    for i, col in enumerate(df_rt.columns):
+        col_quarter = col_quarters[i]
+        # Set to NaN where row_quarter >= col_quarter (keep only strictly before)
+        for j, row_idx in enumerate(df_rt.index):
+            row_quarter = row_quarters[j]
+            if row_quarter >= col_quarter:
+                df_rt.iloc[j, i] = np.nan
+    
+    # ============================================================================
+    # 2. Row-wise forward-fill for remaining NAs (left-to-right across columns)
+    # ============================================================================
+    # Go through each row and fill NAs from left neighbor
+    for row_idx in range(len(df_rt)):
+        for col_idx in range(1, len(df_rt.columns)):
+            if pd.isna(df_rt.iloc[row_idx, col_idx]) and not pd.isna(df_rt.iloc[row_idx, col_idx - 1]):
+                df_rt.iloc[row_idx, col_idx] = df_rt.iloc[row_idx, col_idx - 1]
+    
     # Drop completely empty rows and columns
     df_rt = df_rt.dropna(how='all').dropna(how='all', axis=1)
+    
+    # Convert rows (index) to mid-quarter timestamps, keep columns at original datetime
+    df_rt.index = df_rt.index.map(lambda dt: _quarter_to_midquarter_timestamp(*_to_quarter(dt)))
+    df_rt.index.name = "date"
+    
+    # ============================================================================
+    # 3. Build forecast data: opposite of real-time (keep forecasts where row_quarter >= col_quarter)
+    # ============================================================================
+    df_forecast = df_raw_component.copy()
+    for i, col in enumerate(df_forecast.columns):
+        col_quarter = col_quarters[i]
+        # Set to NaN where row_quarter < col_quarter (keep only where row >= col, i.e., forecasts)
+        for j, row_idx in enumerate(df_forecast.index):
+            row_quarter = row_quarters[j]
+            if row_quarter < col_quarter:
+                df_forecast.iloc[j, i] = np.nan
+    
+    # Drop completely empty rows and columns
+    df_forecast = df_forecast.dropna(how='all').dropna(how='all', axis=1)
+    
+    # Convert rows (index) to mid-quarter timestamps, keep columns at original datetime
+    df_forecast.index = df_forecast.index.map(lambda dt: _quarter_to_midquarter_timestamp(*_to_quarter(dt)))
+    df_forecast.index.name = "date"
+    
+    # ============================================================================
+    # 4. Build first release evaluation series
+    # ============================================================================
+    # Algorithm: loop over columns, taking first row initially, then all new observations
+    eval_data = {}
+    last_stored_row = None
+    
+    rt_sorted = df_rt.copy()
+    rt_sorted = rt_sorted.reindex(sorted(rt_sorted.columns), axis=1)
+    
+    for col in rt_sorted.columns:
+        col_quarter = _to_quarter(col)
+        col_data = rt_sorted[col].dropna()
+        
+        if col_data.empty:
+            continue
+        
+        # Get candidates: values available at this publication
+        candidates = col_data.copy()
+        
+        # Filter to only new observations
+        if last_stored_row is not None:
+            candidates = candidates[candidates.index > last_stored_row]
+        
+        # Add to evaluation series
+        if not candidates.empty:
+            for idx, val in candidates.items():
+                if idx not in eval_data:
+                    eval_data[idx] = val
+        
+        # Update last stored row
+        if not candidates.empty:
+            last_stored_row = candidates.index.max()
+    
+    # Create evaluation DataFrame (mx1)
+    if eval_data:
+        first_release_eval_df = pd.DataFrame.from_dict(eval_data, orient='index', columns=['first_release_value'])
+        first_release_eval_df.index.name = "date"
+        first_release_eval_df = first_release_eval_df.sort_index()
+    else:
+        first_release_eval_df = pd.DataFrame(columns=['first_release_value'])
+        first_release_eval_df.index.name = "date"
+    
+    return df_rt, df_forecast, first_release_eval_df
 
-    # 3. Build first release evaluation series per user's algorithm.
-    def build_evaluation_df(source_df):
-        """
-        Build an evaluation DataFrame as an n×1 series of first releases.
-
-        For each publication column (col_date):
-        1) Consider values available at publication: row_date < col_date
-        2) Keep only values with row_date > last_stored_row (newly released since last publication)
-        3) Append those (row_date, value) into a single column: 'first_release_value'
-        4) Update last_stored_row to the max row_date added so far
-        """
-        series_list = []
-        last_stored_row = None
-        stored_indices = set()
-
-        # ensure datetime index/columns if needed
-        source = source_df.copy()
-        source.index = pd.to_datetime(source.index, errors="coerce")
-        source = source[source.index.notna()]
-
-        # if columns are datetimes, sort them; otherwise keep order
-        try:
-            source.columns = pd.to_datetime(source.columns, errors="coerce")
-            source = source.loc[:, ~source.columns.isna()]
-            source = source.reindex(sorted(source.columns), axis=1)
-        except Exception:
-            pass
-
-        for col_date in source.columns:
-            # Step 1: rows available at publication
-            candidates = source.loc[source.index < col_date, col_date].dropna()
-
-            # Step 2: only new rows since last publication
-            if last_stored_row is not None:
-                candidates = candidates[candidates.index > last_stored_row]
-
-            # Step 3: add to list (do not overwrite existing dates)
-            if not candidates.empty:
-                # keep only dates not already stored (extra safety)
-                candidates = candidates[~candidates.index.isin(stored_indices)]
-                if not candidates.empty:
-                    candidates = candidates.rename("first_release_value")
-                    series_list.append(candidates)
-                    
-                    # Step 4: update stored indices and last row
-                    stored_indices.update(candidates.index)
-                    last_stored_row = candidates.index.max()
-
-        # Concatenate all series at once to avoid FutureWarning with empty Series
-        if series_list:
-            eval_s = pd.concat(series_list)
-        else:
-            eval_s = pd.Series(dtype="float64", name="first_release_value")
-
-        eval_df = eval_s.sort_index().to_frame()
-        eval_df.index.name = "date"
-        return eval_df
 
 
-    first_release_eval_df = build_evaluation_df(df_raw)
 
-    return df_rt, first_release_eval_df
-
-
-# --------------------------------------------------------------------------------------------------
-#  COMPONENT-LEVEL FORECASTS PROCESSING
-# --------------------------------------------------------------------------------------------------
-
-ifo_components_dir = os.path.join(
-    wd, "0_0_Data", "0_Forecast_Inputs", "1_ifo_quarterly_components"
-)
-ifo_components_path = os.path.join(ifo_components_dir, "ifo_BIP_Komponenten.xlsx")
-
-if not os.path.exists(ifo_components_path):
-    raise FileNotFoundError(f"Missing input file: {ifo_components_path}")
 
 # Discover sheet names first
 xls = pd.ExcelFile(ifo_components_path)
@@ -1347,28 +1151,44 @@ xls = pd.ExcelFile(ifo_components_path)
 for sheet in xls.sheet_names:
     # Load each sheet
     # First two rows are meta, row 3 is header (publication dates), col1 is target date
-    df_raw = pd.read_excel(
+    df_raw_component = pd.read_excel(
         ifo_components_path,
         sheet_name=sheet,
         skiprows=2,
         header=0,
     )
     
-    # Process to get real-time data and first releases (including evaluation df)
-    df_rt, first_release_eval_df = process_ifo_component_realtime(df_raw.copy())
+    # Process to get real-time data, forecast series, and first release evaluation
+    df_rt, df_forecast, first_release_eval_df = process_ifo_component_realtime(df_raw_component.copy())
 
-    # Get YoY from QoQ
-    df_yoy_rt = get_yoy(df_rt)
+    # Get YoY from QoQ real-time data
+    try:
+        df_yoy_rt = get_yoy(df_rt)
+    except Exception:
+        df_yoy_rt = pd.DataFrame()
+
+    # Get YoY from QoQ forecast data
+    try:
+        df_yoy_forecast = get_yoy(df_forecast)
+    except Exception:
+        df_yoy_forecast = pd.DataFrame()
 
     # Save real-time QoQ and YoY data
     safe_sheet_name = _safe_sheet_filename(sheet)
-    out_path_qoq = os.path.join(output_dir_ts_components, f"qoq_rt_data_{safe_sheet_name}.xlsx")
-    out_path_yoy = os.path.join(output_dir_ts_components, f"yoy_rt_data_{safe_sheet_name}.xlsx")
+    out_path_qoq_rt = os.path.join(output_dir_ts_components, f"qoq_rt_data_{safe_sheet_name}.xlsx")
+    out_path_yoy_rt = os.path.join(output_dir_ts_components, f"yoy_rt_data_{safe_sheet_name}.xlsx")
 
-    _safe_to_excel(df_rt, out_path_qoq, index=True)
-    _safe_to_excel(df_yoy_rt, out_path_yoy, index=True)
+    _safe_to_excel(df_rt, out_path_qoq_rt, index=True)
+    _safe_to_excel(df_yoy_rt, out_path_yoy_rt, index=True)
 
-    # Save evaluation QoQ table built by the algorithm
+    # Save forecast QoQ and YoY data
+    out_path_qoq_forecast = os.path.join(component_forecast_output_dir, f"qoq_forecast_data_{safe_sheet_name}.xlsx")
+    out_path_yoy_forecast = os.path.join(component_forecast_output_dir, f"yoy_forecast_data_{safe_sheet_name}.xlsx")
+
+    _safe_to_excel(df_forecast, out_path_qoq_forecast, index=True)
+    _safe_to_excel(df_yoy_forecast, out_path_yoy_forecast, index=True)
+
+    # Save evaluation QoQ table (first release)
     os.makedirs(output_dir_eval_components, exist_ok=True)
     out_eval_qoq = os.path.join(output_dir_eval_components, f"first_release_qoq_{safe_sheet_name}.xlsx")
     _safe_to_excel(first_release_eval_df, out_eval_qoq, index=True)
@@ -1381,13 +1201,6 @@ for sheet in xls.sheet_names:
 
     out_eval_yoy = os.path.join(output_dir_eval_components, f"first_release_yoy_{safe_sheet_name}.xlsx")
     _safe_to_excel(first_release_eval_yoy_df, out_eval_yoy, index=True)
-
-
-
-
-
-
-
 
 
 
