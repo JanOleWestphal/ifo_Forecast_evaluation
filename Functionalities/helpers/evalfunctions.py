@@ -111,11 +111,11 @@ def filter_df_by_datetime_index(
     out = df.copy()
     out.index = pd.to_datetime(out.index)
 
-    if start is not None:
+    if start is not None and start != "":
         start = pd.to_datetime(start)
         out = out.loc[out.index >= start]
 
-    if end is not None:
+    if end is not None and end != "":
         end = pd.to_datetime(end)
         out = out.loc[out.index <= end]
 
@@ -129,53 +129,80 @@ def filter_df_by_datetime_index(
 # ==================================================================================================
 
 def match_ifo_naive_forecasts_dates(ifo_qoq_forecasts, naive_qoq_dfs_dict):
-
     """
     This function matches the dates of the naive forecaster dataframes to the dates of the ifo forecasts.
     It removes any rows and columns from the naive forecaster dataframes that do not have a corresponding
     entry in the ifo forecasts dataframe.
-
     Parameters:
     ifo_qoq_forecasts (pd.DataFrame): DataFrame containing ifo quarterly forecasts with datetime index and columns.
     naive_qoq_dfs_dict (dict): Dictionary of DataFrames containing naive quarterly forecasts.
-
     Returns:
     dict: Updated dictionary of DataFrames with matched dates.
     """
-
     if settings.match_ifo_naive_dates:
         for key, naive_df in naive_qoq_dfs_dict.items():
         
-            # Convert index and columns to datetime
+            # Convert to datetime
             naive_df.index = pd.to_datetime(naive_df.index)
-            ifo_cols_dt = pd.to_datetime(ifo_qoq_forecasts.columns)
-            ifo_index_dt = pd.to_datetime(ifo_qoq_forecasts.index)
+            naive_df.columns = pd.to_datetime(naive_df.columns)
             
-            # Build sets of year-quarter pairs for IFO columns
-            ifo_col_quarters = {(d.year, d.quarter) for d in ifo_cols_dt}
+            ifo_df = ifo_qoq_forecasts.copy()
+            ifo_df.columns = pd.to_datetime(ifo_df.columns)
+            ifo_df.index = pd.to_datetime(ifo_df.index)
             
-            # Build sets of year-quarter pairs for IFO index (rows)
-            ifo_index_quarters = {(d.year, d.quarter) for d in ifo_index_dt}
+            # Normalize both to quarterly level for matching
+            naive_col_quarters = pd.PeriodIndex(naive_df.columns, freq='Q')
+            naive_index_quarters = pd.PeriodIndex(naive_df.index, freq='Q')
+            ifo_col_quarters = pd.PeriodIndex(ifo_df.columns, freq='Q')
+            ifo_index_quarters = pd.PeriodIndex(ifo_df.index, freq='Q')
             
-            # Keep only valid naive columns (year-quarter match with IFO columns)
-            valid_cols = [
-                col for col in naive_df.columns
-                if (pd.to_datetime(col).year, pd.to_datetime(col).quarter) in ifo_col_quarters
-            ]
+            # Build sets of quarters for matching
+            ifo_col_quarter_set = set(ifo_col_quarters)
+            ifo_index_quarter_set = set(ifo_index_quarters)
             
-            # Keep only valid naive rows (year-quarter match with IFO index)
-            valid_rows = [
-                row for row in naive_df.index
-                if (row.year, row.quarter) in ifo_index_quarters
-            ]
+            # Filter columns: keep naive columns that match ifo quarters
+            valid_col_mask = naive_col_quarters.isin(ifo_col_quarter_set)
+            valid_cols = naive_df.columns[valid_col_mask]
             
-            # Filter both rows and columns
+            # Filter rows: keep naive rows that match ifo quarters
+            valid_row_mask = naive_index_quarters.isin(ifo_index_quarter_set)
+            valid_rows = naive_df.index[valid_row_mask]
+            
+            # Apply filters
             filtered_df = naive_df.loc[valid_rows, valid_cols]
+            
+            # Now match ifo_df columns to filtered_df columns on quarterly basis
+            # Map ifo quarters to ifo columns
+            ifo_quarter_to_col = dict(zip(ifo_col_quarters, ifo_df.columns))
+            
+            # For each column in filtered_df, find corresponding ifo column
+            for col in filtered_df.columns:
+                col_quarter = pd.Period(col, freq='Q')
+                if col_quarter in ifo_quarter_to_col:
+                    ifo_col = ifo_quarter_to_col[col_quarter]
+                    # Get rows where ifo_df has non-NaN values for this quarter's column
+                    ifo_col_data = ifo_df[ifo_col]
+                    
+                    # Match rows on quarterly basis
+                    for row in filtered_df.index:
+                        row_quarter = pd.Period(row, freq='Q')
+                        # Find corresponding ifo row
+                        ifo_row_matches = ifo_df.index[ifo_index_quarters == row_quarter]
+                        if len(ifo_row_matches) > 0:
+                            ifo_row = ifo_row_matches[0]
+                            # If ifo doesn't have a value, set filtered_df to NaN
+                            if pd.isna(ifo_col_data.loc[ifo_row]):
+                                filtered_df.loc[row, col] = np.nan
+                        else:
+                            # No matching row in ifo_df
+                            filtered_df.loc[row, col] = np.nan
             
             # Save back
             naive_qoq_dfs_dict[key] = filtered_df
         
         return naive_qoq_dfs_dict
+    
+    return naive_qoq_dfs_dict
 
 """
 if settings.match_ifo_naive_dates:

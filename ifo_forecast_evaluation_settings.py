@@ -24,16 +24,22 @@ To do this, select the series to be evaluated below and run scripts 1,2,3,4
 # Deicde whether to run the main evaluation of ifo's GDP forecasts against rt data; set to False to only run the component evaluation
 evaluate_quarterly_gdp_forecasts = True # True or False
 
-# Select which part of the ifo forecast you want to evaluate
+# Select whether to run the component evaluation; set to False to only run the GDP evaluation
 evaluate_forecast_components = True # True or False
 
-# CODEBOOK:
+# Select which components to include, List of strings
+included_components = ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
+
+# ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
+
+# Options:
 """
-'GDP' -> slightly faulty data, kept as a sanity check; for proper evaluation run main analysis
+'GDP' -> incompletely revisioned real-time data, kept as a sanity check; for proper evaluation run main analysis
 'PRIVCON' (private consumption), 'PUBCON' (public consumption), 'CONSTR' (construction), 
 'OPA' (other product assetes), 'INVINV' (investment inventories), 'DOMUSE' (domestic use),
 'TRDBAL' (trade balance), 'EXPORT', 'IMPORT'
 """
+
 
 # Decide whether to run filtered timeframe analysis for components (e.g., 2010-Q1 to 2017-Q1) as 
 # well as outlier filtering; Set to False for faster execution
@@ -105,8 +111,8 @@ extend_rt_data_backwards = True # True or False
 run_gva_evaluation = True  # True or False
 
 # Define which quarter of which year should be the earliest data point, available from Q1-1970 onwards
-evaluation_limit_year = 1970            # from 1970 onwards; set as integer
-evaluation_limit_quarter = 1            # 1,2,3 or 4; set as integer
+horizon_limit_year = 1970            # from 1970 onwards; set as integer
+horizon_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
 
 

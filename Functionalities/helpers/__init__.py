@@ -5,7 +5,7 @@ from .helperfunctions import (
 
     # Data Processing Functions
     filter_first_release_limit,
-    filter_evaluation_limit,
+    filter_horizon_limit,
 
     process_BB_GDP,
 

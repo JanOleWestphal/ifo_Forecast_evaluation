@@ -143,8 +143,8 @@ resultfolder_name_n_forecast = settings.resultfolder_name_n_forecast
 naming_convention = settings.naming_convention
 
 # Select timeframes
-evaluation_limit_year = settings.evaluation_limit_year
-evaluation_limit_quarter = settings.evaluation_limit_quarter   
+horizon_limit_year = settings.horizon_limit_year
+horizon_limit_quarter = settings.horizon_limit_quarter   
 
 # Select whether to evaluate GVA predictions
 run_gva_evaluation = settings.run_gva_evaluation
