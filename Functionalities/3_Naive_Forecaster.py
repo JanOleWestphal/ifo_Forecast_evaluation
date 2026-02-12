@@ -89,8 +89,8 @@ resultfolder_name_n_forecast = settings.resultfolder_name_n_forecast
 naming_convention = settings.naming_convention
 
 # Select timeframes
-evaluation_limit_year = settings.evaluation_limit_year
-evaluation_limit_quarter = settings.evaluation_limit_quarter    
+horizon_limit_year = settings.horizon_limit_year
+horizon_limit_quarter = settings.horizon_limit_quarter    
 
 # Define the horizon of first releases which should be evaluated:
 first_release_lower_limit_year = settings.first_release_lower_limit_year

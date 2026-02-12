@@ -234,15 +234,15 @@ def filter_first_release_limit(df,
 
 
 
-## Filter rows: only keep rows >= evaluation_limit_year/quarter
-def filter_evaluation_limit(df, 
-                                evaluation_limit_year = settings.evaluation_limit_year,
-                                evaluation_limit_quarter = settings.evaluation_limit_quarter):
+## Filter rows: only keep rows >= horizon_limit_year/quarter
+def filter_horizon_limit(df, 
+                                horizon_limit_year = settings.horizon_limit_year,
+                                horizon_limit_quarter = settings.horizon_limit_quarter):
 
     # Filter rows prior to evaluation limit
     row_mask = [
-        (idx.year > evaluation_limit_year) or
-        (idx.year == evaluation_limit_year and (idx.quarter >= evaluation_limit_quarter))
+        (idx.year > horizon_limit_year) or
+        (idx.year == horizon_limit_year and (idx.quarter >= horizon_limit_quarter))
         for idx in df.index
     ]
 

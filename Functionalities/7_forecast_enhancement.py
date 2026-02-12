@@ -27,6 +27,18 @@ Get error tables, run tests on relative performance
 
 
 
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                        LOCAL SETTINGS                                            #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+# Set filter limits, YYYY-MM-DD String, keep empty for no limit
+low_filter_incl = ''
+up_filter_incl = '2019-12-01'
+
+
+
 
 
 # -------------------------------------------------------------------------------------------------#
@@ -121,8 +133,8 @@ resultfolder_name_n_forecast = settings.resultfolder_name_n_forecast
 naming_convention = settings.naming_convention
 
 # Select timeframes
-evaluation_limit_year = settings.evaluation_limit_year
-evaluation_limit_quarter = settings.evaluation_limit_quarter   
+horizon_limit_year = settings.horizon_limit_year
+horizon_limit_quarter = settings.horizon_limit_quarter   
 
 # Select whether to evaluate GVA predictions
 run_gva_evaluation = settings.run_gva_evaluation
@@ -134,14 +146,36 @@ run_gva_evaluation = settings.run_gva_evaluation
 # SETUP OUTOUT FOLDER STRUCTURE
 # ==================================================================================================
 
+
+## Dynamic Naming
+# Extract first four characters from filter strings (or keep empty if string is empty)
+filter_name_low = low_filter_incl[:7] if low_filter_incl else ''
+filter_name_up = up_filter_incl[:7] if up_filter_incl else ''
+
+
 ## Result Folder Paths
 result_folder = os.path.join(wd, '4_Mixed_Forecasts')
 
-
 ## Subfolder
-table_folder = os.path.join(result_folder, '1_Tables')
-error_stats_plot_folder = os.path.join(result_folder, '2_Error_Plots')
-mixed_model_folder = os.path.join(result_folder, '3_Optimal_Mixing_Weighs')
+if not filter_name_low and not filter_name_up:
+    table_folder = os.path.join(result_folder, '1_Tables')
+    error_stats_plot_folder = os.path.join(result_folder, '2_Error_Plots')
+    mixed_model_folder = os.path.join(result_folder, '3_Optimal_Mixing_Weighs')
+
+elif filter_name_low and not filter_name_up:
+    table_folder = os.path.join(result_folder, f'1_Tables_since_{filter_name_low}')
+    error_stats_plot_folder = os.path.join(result_folder, f'2_Error_Plots_since_{filter_name_low}')
+    mixed_model_folder = os.path.join(result_folder, f'3_Optimal_Mixing_Weighs_since_{filter_name_low}')
+
+elif not filter_name_low and filter_name_up:
+    table_folder = os.path.join(result_folder, f'1_Tables_until_{filter_name_up}')
+    error_stats_plot_folder = os.path.join(result_folder, f'2_Error_Plots_until_{filter_name_up}')
+    mixed_model_folder = os.path.join(result_folder, f'3_Optimal_Mixing_Weighs_until_{filter_name_up}')
+
+else:
+    table_folder = os.path.join(result_folder, f'1_Tables_{filter_name_low}-{filter_name_up}')
+    error_stats_plot_folder = os.path.join(result_folder, f'2_Error_Plots_{filter_name_low}-{filter_name_up}')
+    mixed_model_folder = os.path.join(result_folder, f'3_Optimal_Mixing_Weighs_{filter_name_low}-{filter_name_up}')
 
 
 ## Create if needed
@@ -288,9 +322,11 @@ joint_nowcast_base_df = joint_nowcast_df.copy()
 
 """NOTE: all rows are indexed by latest date of quarter"""
 
-## Adjust filter if needed, boundary inclusive
-joint_nowcast_df = filter_df_by_datetime_index(joint_nowcast_df, '2000-01-01', '2100-01-01')
+## Filter, boundary inclusive
+joint_nowcast_df = filter_df_by_datetime_index(joint_nowcast_df, low_filter_incl, up_filter_incl)
 #show(joint_nowcast_df)
+
+
 
 
 
@@ -320,19 +356,22 @@ def combine_3_forecasts(df, col1, col2, col3, w1, w2, w3, new_name):
 
     return df
 
+## Create simple averaged predictions
 
-## Simple average of judgmental and IfoCAST
-joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'judgemental', 'ifoCast', 0.5, 0.5, 'judg_ifoCast')
+def get_averaged_froecasts(df):
+    ## Simple average of judgmental and IfoCAST
+    joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'judgemental', 'ifoCast', 0.5, 0.5, 'judg_ifoCast')
 
-## Simple average of judgmental and AR2
-joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'judgemental', 'naiveAR2', 0.5, 0.5, 'judg_AR')
+    ## Simple average of judgmental and AR2
+    joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'judgemental', 'naiveAR2', 0.5, 0.5, 'judg_AR')
 
-## Simple average of ifoCAST and AR2
-joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'ifoCast', 'naiveAR2', 0.5, 0.5, 'ifoCAST_AR')
+    ## Simple average of ifoCAST and AR2
+    joint_nowcast_df = combine_2_forecasts(joint_nowcast_df, 'ifoCast', 'naiveAR2', 0.5, 0.5, 'ifoCAST_AR')
 
-## Simple average of judgmental (0.5), ifoCAST and AR2 (0.25 each)
-joint_nowcast_df = combine_3_forecasts(joint_nowcast_df, 'judgemental', 'naiveAR2', 'ifoCast', 0.5, 0.25, 0.25, 'judg_AR_ifoCast')
+    ## Simple average of judgmental (0.5), ifoCAST and AR2 (0.25 each)
+    joint_nowcast_df = combine_3_forecasts(joint_nowcast_df, 'judgemental', 'naiveAR2', 'ifoCast', 0.5, 0.25, 0.25, 'judg_AR_ifoCast')
 
+joint_nowcast_df = get_averaged_froecasts(joint_nowcast_df)
 #show(joint_nowcast_df)
 
 
