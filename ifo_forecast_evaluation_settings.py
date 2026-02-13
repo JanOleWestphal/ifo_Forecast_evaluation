@@ -48,6 +48,71 @@ run_component_filter = False # True or False
 
 
 
+
+
+
+# ==================================================================================================
+#                                     EVALUATION SETTINGS
+# ==================================================================================================
+
+## Decide how many quarters to plot in the Quarterly Evaluation Module; int, should be more than 
+QoQ_eval_n_bars = 7  # int in [1,10]; Remember 0-indexing: n_bars = 5 plots Q0-Q4
+
+## Define whether to subset the naive forecaster series s.t. only forecasts available  in ifo's 
+# main QoQ Forecasts are evaluated
+match_ifo_naive_dates = True  # True or False; RECOMMENDATION:True
+
+
+
+# --------------------------------------------------------------------------------------------------
+#                                     OUTLIER SETTINGS
+# --------------------------------------------------------------------------------------------------
+
+# Drop Outliers: Decide to drop forecast errors exceeding a certain threshhold
+drop_outliers = True  # True or False
+
+# Set the Thresshold which drops errors exceeding sd_threshold * sd(col)
+sd_threshold = 2.5  # float, e.g. 0.05 or 5; runs if drop_outliers = True
+
+
+
+## Select an evaluation intervall, e.g. 2010-Q1 - 2019-Q4:
+"""
+NOTE: 
+- Does not apply to YoY evaluations, which are always run for the full intervall
+- This is not called in the ifoCAST evaluation, but could be changed if needed
+- Full evaluation is always run as well
+"""
+
+# Define the horizon of first releases which should be evaluated from below:
+first_release_lower_limit_year = 2022           # Forecasts start in 2007; set as integer
+first_release_lower_limit_quarter = 1            # 1,2,3 or 4; set as integer
+
+# Define the horizon of first releases which should be evaluated from below:
+first_release_upper_limit_year = 2100          # Forecasts start in 2007; set as integer
+first_release_upper_limit_quarter = 1            # 1,2,3 or 4; set as integer
+
+# Decide whether to filter for outliers within the evaluation intervall
+filter_outliers_within_eval_intervall = False  # True or False
+
+
+
+## ifoCAST evaluation settings
+
+# Decide whether to ADDITIONALLY evaluate the ifoCAST starting in Q1-2021
+run_ifocast_2021_subset = True  # True or False; only runs if run_ifoCAST_evaluation = True
+
+# Decide whether to ADDITIONALLY evaluate the ifoCAST starting in Q1-2022
+run_ifocast_2022_subset = True  # True or False; only runs if run_ifoCAST_evaluation = True
+
+
+
+
+
+
+
+
+
 # ==================================================================================================
 #                          SYSTEM SETTINGS: Which Scripts should be run?
 # ==================================================================================================
@@ -121,58 +186,7 @@ horizon_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
 
 
-# ==================================================================================================
-#                                     EVALUATION SETTINGS
-# ==================================================================================================
 
-## Decide how many quarters to plot in the Quarterly Evaluation Module; int, should be more than 
-QoQ_eval_n_bars = 7  # int in [1,10]; Remember 0-indexing: n_bars = 5 plots Q0-Q4
-
-## Define whether to match the dates of available ifo QoQ Forecasts for the naive forecaster
-match_ifo_naive_dates = True  # True or False
-
-
-
-# --------------------------------------------------------------------------------------------------
-#                                     OUTLIER SETTINGS
-# --------------------------------------------------------------------------------------------------
-
-# Drop Outliers: Decide to drop forecast errors exceeding a certain threshhold
-drop_outliers = True  # True or False
-
-# Set the Thresshold which drops errors exceeding sd_threshold * sd(col)
-sd_threshold = 2.5  # float, e.g. 0.05 or 5; runs if drop_outliers = True
-
-
-
-## Select an evaluation intervall, e.g. 2010-Q1 - 2019-Q4:
-"""
-NOTE: 
-- Does not apply to YoY evaluations, which are always run for the full intervall
-- This is not called in the ifoCAST evaluation, but could be changed if needed
-- Full evaluation is always run as well
-"""
-
-# Define the horizon of first releases which should be evaluated from below:
-first_release_lower_limit_year = 2022           # from 1989 onwards; set as integer
-first_release_lower_limit_quarter = 1            # 1,2,3 or 4; set as integer
-
-# Define the horizon of first releases which should be evaluated from below:
-first_release_upper_limit_year = 2100          # from 1989 onwards; set as integer
-first_release_upper_limit_quarter = 1            # 1,2,3 or 4; set as integer
-
-# Decide whether to filter for outliers within the evaluation intervall
-filter_outliers_within_eval_intervall = False  # True or False
-
-
-
-## ifoCAST evaluation settings
-
-# Decide whether to ADDITIONALLY evaluate the ifoCAST starting in Q1-2021
-run_ifocast_2021_subset = True  # True or False; only runs if run_ifoCAST_evaluation = True
-
-# Decide whether to ADDITIONALLY evaluate the ifoCAST starting in Q1-2022
-run_ifocast_2022_subset = True  # True or False; only runs if run_ifoCAST_evaluation = True
 
 
 
