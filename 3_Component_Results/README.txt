@@ -35,6 +35,7 @@ The subfolder names correspond to the following GDP demand-side components:
 'PRIVCON' -> private consumption, Private Konsumausgaben 
 'PUBCON' -> public consumption, Öffentlicher Konsum
 'CONSTR' -> construction, Bauten 
+'EQUIPMENT' -> Ausrüstungen
 'OPA' -> other product assets, Sonstige Anlagen 
 'INVINV' -> investment inventories, Vorratsinvestitionen
 'DOMUSE'-> domestic use, inländische Verwendung

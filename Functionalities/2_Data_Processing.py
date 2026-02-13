@@ -901,18 +901,38 @@ def process_ifo_qoq_forecasts(ifo_qoq_raw, ifo_qoq_output_path):
 # ==================================================================================================
 
 ## Filepath
-ifo_qoq_input_path = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '1_ifo_quarterly_gdp')
+ifo_qoq_input_path = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs')
 
 # --------------------------------------------------------------------------------------------------
 # Load in the excel dynamically
 # --------------------------------------------------------------------------------------------------
 
-# Find the first Excel file in the directory
-excel_files = [f for f in os.listdir(ifo_qoq_input_path) if f.endswith('.xlsx')]
+# Find the evaluation Excel files in the directory
+excel_files = [f for f in os.listdir(ifo_qoq_input_path) if f.endswith('.xlsx') and f.startswith('ifo_Konjunkturprognose')]
 
-# Check that it is the latest one
-if len(excel_files) != 1:
-    raise ValueError("Expected exactly one Excel file in the directory. Found: " + ", ".join(excel_files))
+# If no matching files, raise error
+if not excel_files:
+    raise ValueError(f"No Excel files starting with 'ifo_Konjunkturprognose' found in the directory {ifo_qoq_input_path}.")
+
+# Helper to parse season and year from filename
+def _season_year_key(filename):
+    # Get last part split by '_', e.g. 'S24' or 'F25'
+    last_part = filename.rsplit('_', 1)[-1]
+    # Remove extension
+    last_part = last_part.replace('.xlsx', '')
+    # Season: first char, Year: rest
+    if len(last_part) < 3:
+        return (0, 0)  # fallback for malformed
+    season = last_part[0]
+    year = int(last_part[1:])
+    # Define season order: W < H < S < F
+    season_order = {'W': 1, 'H': 2, 'S': 3, 'F': 4}
+    return (year, season_order.get(season, 0))
+
+# Sort files by (year, season) descending, pick latest
+excel_files_sorted = sorted(excel_files, key=_season_year_key, reverse=True)
+ifo_qoq_filename = excel_files_sorted[0]
+ifo_qoq_path = os.path.join(ifo_qoq_input_path, ifo_qoq_filename)
 
 # Set path
 ifo_qoq_path = os.path.join(ifo_qoq_input_path, excel_files[0])

@@ -25,13 +25,31 @@ from openpyxl.utils import get_column_letter
 # ==================================================================================================
 
 # Ensure project root is in sys.path
+
 wd = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if wd not in sys.path:
     sys.path.insert(0, wd)
 
+# Dynamically find the latest 'ifo_Konjunkturprognose' Excel file
+ifo_qoq_input_path = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs')
+excel_files = [f for f in os.listdir(ifo_qoq_input_path) if f.endswith('.xlsx') and f.startswith('ifo_Konjunkturprognose')]
 
-SRC_PATH= os.path.join(wd, '0_0_Data', '0_Forecast_Inputs', '1_ifo_quarterly_gdp', 'ifo_Konjunkturprognose_Quartalsdaten_Archiv_H25.xlsx')
-wb_src=openpyxl.load_workbook(SRC_PATH, data_only=True)
+if not excel_files:
+    raise ValueError(f"No Excel files starting with 'ifo_Konjunkturprognose' found in the directory {ifo_qoq_input_path}.")
+
+def _season_year_key(filename):
+    last_part = filename.rsplit('_', 1)[-1]
+    last_part = last_part.replace('.xlsx', '')
+    if len(last_part) < 3:
+        return (0, 0)
+    season = last_part[0]
+    year = int(last_part[1:])
+    season_order = {'W': 1, 'H': 2, 'S': 3, 'F': 4}
+    return (year, season_order.get(season, 0))
+
+excel_files_sorted = sorted(excel_files, key=_season_year_key, reverse=True)
+SRC_PATH = os.path.join(ifo_qoq_input_path, excel_files_sorted[0])
+wb_src = openpyxl.load_workbook(SRC_PATH, data_only=True)
 
 OUT_PATH = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs','1_ifo_quarterly_components', "ifo_BIP_Komponenten.xlsx")
 
@@ -39,7 +57,7 @@ OUT_PATH = os.path.join(wd, '0_0_Data', '0_Forecast_Inputs','1_ifo_quarterly_com
 
 
 
-print("Creating component-level vintage dataset from ifo quarterly excel...\n")
+print("\n\nCreating component-level vintage dataset from ifo quarterly excel...\n")
 
 
 # -------------------------------------------------------------------------------------------------#
@@ -63,6 +81,8 @@ VAR_MAP = {
     "PUBCON":  ["konsumausgaben des staates", "offentlicher konsum", "konsum des staates"],
     "CONSTR":  ["bauten"],
     "OPA":     ["sonstige anlagen"],
+    "EQUIPMENT": ["ausrustungen", "ausrüstungen", "ausruestungen", "ausrustungsinvestitionen", 
+                  "ausruestungsinvestitionen", "ausrüstungsinvestitionen" ],
     "INVINV":  ["vorratsinvestitionen", "vorratsveraenderungen", "vorratsveranderungen", "vorrate"],
     "DOMUSE":  ["inlandische verwendung", "inlandsnachfrage", "inlaendische verwendung"],
     "TRDBAL":  ["aussenbeitrag", "außenbeitrag"],

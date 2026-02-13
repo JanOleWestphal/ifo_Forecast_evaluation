@@ -1423,6 +1423,10 @@ if settings.evaluate_forecast_components:
 
     for component_name, df_component in qoq_dfs_components.items():
 
+        if component_name not in settings.included_components:
+            print(f"Skipping naive {component_name} forecast, as it is not in the specified settings.included_components list.")
+            continue
+
         # Add a substring
         component_name = component_name + "_"
 
