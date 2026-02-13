@@ -486,6 +486,10 @@ def save_error_metric_barplots(
 
     saved = []
 
+    # Consistent ordering of models on the x-axis
+    idx_sorted = sort_models_for_barplots(list(stats_df.index))
+    stats_df = stats_df.loc[idx_sorted]
+
     for metric in metrics:
         if metric not in stats_df.columns:
             continue  # skip missing metrics silently

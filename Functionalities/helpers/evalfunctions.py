@@ -61,6 +61,68 @@ from scipy.stats import norm
 import ifo_forecast_evaluation_settings as settings
 
 
+# -------------------------------------------------------------------------------------------------#
+# Model ordering (plots)
+# -------------------------------------------------------------------------------------------------#
+
+def model_barplot_sort_key(model_name: str) -> tuple:
+    """Return a sort key for model labels used in barplots.
+
+    Ordering rule (requested):
+      1) ifo
+      2) ifoCAST (if applicable)
+      3) AR models by number of lags, descending (AR3 before AR2)
+      4) AVERAGE models by horizon, descending (AVERAGE_FULL before AVERAGE_10 before AVERAGE_1)
+      5) everything else last (stable/lexicographic)
+
+    Notes
+    -----
+    Model names in this project commonly look like:
+      - 'AR2_50_9', 'AR3_40_9'
+      - 'AVERAGE_1_9', 'AVERAGE_10_9', 'AVERAGE_FULL_9'
+      - 'ifo', 'ifoCAST'
+    """
+
+    name = "" if model_name is None else str(model_name)
+    lower = name.lower()
+
+    # 1) ifo
+    if lower == "ifo":
+        return (0, 0, lower)
+
+    # 2) ifoCAST
+    if "ifocast" in lower:
+        return (1, 0, lower)
+
+    # 3) AR(p) models
+    m_ar = re.search(r"ar\s*(\d+)", lower)
+    if m_ar:
+        p = int(m_ar.group(1))
+        return (2, -p, lower)
+
+    # 4) AVERAGE models
+    if lower.startswith("average"):
+        # expected: AVERAGE_<horizon>_<forecast_horizon> (horizon is int or 'FULL')
+        parts = lower.split("_")
+        horizon_token = parts[1] if len(parts) >= 2 else ""
+        if horizon_token == "full":
+            horizon_rank = 10**9
+        else:
+            try:
+                horizon_rank = int(horizon_token)
+            except ValueError:
+                horizon_rank = -1
+        return (3, -horizon_rank, lower)
+
+    return (99, 0, lower)
+
+
+def sort_models_for_barplots(model_names: Sequence[Any]) -> list[Any]:
+    """Sort a list-like of model names according to `model_barplot_sort_key`."""
+    names = list(model_names)
+    return sorted(names, key=lambda x: model_barplot_sort_key(str(x)))
+
+
 
 
 
@@ -1768,6 +1830,9 @@ def plot_quarterly_metrics(*args, metric_col='MSE', title=None, figsize=(12, 8),
             dfs_to_plot.append((f'ifo', arg))
         else:
             raise ValueError("Arguments must be DataFrames or dictionaries containing DataFrames")
+
+    # Enforce consistent model ordering for barplots
+    dfs_to_plot = sorted(dfs_to_plot, key=lambda pair: model_barplot_sort_key(pair[0]))
     
     # Check if metric column exists in all DataFrames
     for name, df in dfs_to_plot:

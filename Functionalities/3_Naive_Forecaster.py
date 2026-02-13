@@ -460,7 +460,7 @@ def select_col(df_qoq, col, horizon):
     series = df_qoq[col].dropna()
 
     # Select the model scope
-    if len(series) < horizon or horizon == 'FULL':
+    if horizon == 'FULL' or len(series) < horizon:
         data_index = series.index
         data = series.values
     else:
@@ -1054,7 +1054,7 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
     df_combined_qoq = rename_index_qoq(df_combined_qoq)
     # yoy has already been renamed at this stage
 
-    if 'AR_summary' in globals():
+    if AR_summary is not None and not AR_summary.empty:
         AR_summary = rename_index_qoq(AR_summary)
 
 
@@ -1119,8 +1119,8 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
     #    Save Model Summary if Model is AR    #
     # ----------------------------------------#
 
-    # Check wether there is an AR_summary, save if yes
-    if 'AR_summary' in globals():
+    # Check whether there is an AR_summary, save if yes
+    if AR_summary is not None and not AR_summary.empty:
         filename_AR_summary = f'AR{AR_order}_{AR_horizon}_model_statistics.xlsx'
         AR_summary.to_excel(os.path.join(folder_path, filename_AR_summary))
 
@@ -1136,10 +1136,11 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
-def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df, AR_summary, model, average_horizon, AR_horizon, AR_order,
+def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df,  model, average_horizon, AR_horizon, AR_order,
                              file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
                              file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
                              file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+                             AR_summary=None,
                              gdp_mode=True, component_name: str = ""):
 
             ## Process
@@ -1209,6 +1210,9 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
                         file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
                         gdp_mode = True, component_name: str = ""):
 
+    # Only created for AR models; keep defined for other branches.
+    AR_summary = None
+
     for model in models:
 
         # =============================================================================================#
@@ -1276,10 +1280,11 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
 
                 ## Process and Save results
-                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model, average_horizon=None, AR_horizon=AR_horizon, AR_order=AR_order,
+                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, model=model, average_horizon=None, AR_horizon=AR_horizon, AR_order=AR_order,
                                          file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
                                          file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
                                          file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2, 
+                                         AR_summary=AR_summary,
                                          gdp_mode=gdp_mode,
                                          component_name=component_name)
 
@@ -1335,10 +1340,11 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
 
                 ## Process and Save results
-                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model, average_horizon=average_horizon, AR_horizon=None, AR_order=None,
+                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, model=model, average_horizon=average_horizon, AR_horizon=None, AR_order=None,
                                          file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
                                          file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
                                          file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+                                         AR_summary=None,
                                          gdp_mode=gdp_mode,
                                          component_name=component_name)
 
@@ -1380,10 +1386,11 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 
 
                 ## Process and Save results
-                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, AR_summary, model=model, average_horizon=average_horizon, AR_horizon=None, AR_order=None,
+                process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, model=model, average_horizon=average_horizon, AR_horizon=None, AR_order=None,
                                          file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, 
                                          file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
                                          file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+                                         AR_summary=None,
                                          gdp_mode=gdp_mode,
                                          component_name=component_name)
 

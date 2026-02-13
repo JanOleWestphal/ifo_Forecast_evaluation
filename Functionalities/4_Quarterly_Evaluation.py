@@ -207,25 +207,29 @@ ifo_qoq_forecast_df = pd.read_excel(file_path_ifo_qoq, index_col=0)
 # Load ifo forecasts - components
 # --------------------------------------------------------------------------------------------------
 
-# Path
-file_path_ifo_qoq_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_gdp_component_forecast')
+if settings.evaluate_forecast_components:
+    # Path
+    file_path_ifo_qoq_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_gdp_component_forecast')
 
-# Load - manually parse component names from filenames
-ifo_qoq_forecasts_components = {}
+    # Load - manually parse component names from filenames
+    ifo_qoq_forecasts_components = {}
 
-if os.path.exists(file_path_ifo_qoq_components):
-    component_files = glob.glob(os.path.join(file_path_ifo_qoq_components, 'qoq_forecast_data*.xlsx'))
-    for file in component_files:
-        filename = os.path.basename(file)
-        # Extract component name from 'qoq_forecast_data_COMPONENT.xlsx'
-        comp_name = filename.replace('qoq_forecast_data_', '').replace('.xlsx', '')
-        
-        if comp_name in included_components:
-            ifo_qoq_forecasts_components[comp_name] = pd.read_excel(file, index_col=0)
-            print(f"  Loaded ifo forecasts for component: {comp_name}")
+    if os.path.exists(file_path_ifo_qoq_components):
+        component_files = glob.glob(os.path.join(file_path_ifo_qoq_components, 'qoq_forecast_data*.xlsx'))
+        for file in component_files:
+            filename = os.path.basename(file)
+            # Extract component name from 'qoq_forecast_data_COMPONENT.xlsx'
+            comp_name = filename.replace('qoq_forecast_data_', '').replace('.xlsx', '')
+            
+            if comp_name in included_components:
+                ifo_qoq_forecasts_components[comp_name] = pd.read_excel(file, index_col=0)
+                print(f"  Loaded ifo forecasts for component: {comp_name}")
 
-        else: 
-            print(f"  Skipped ifo forecasts for component: {comp_name}; change settings.included_components to include this component in the evaluation.")
+            else: 
+                print(f"  Skipped ifo forecasts for component: {comp_name}; change settings.included_components to include this component in the evaluation.")
+
+else:
+    print("\nComponent forecast evaluation is turned off; to turn on, change settings.evaluate_forecast_components to True\n")
 
 
 
@@ -332,8 +336,9 @@ def load_component_naive_forecasts(
 
 
 ## Load component naive forecasts, drop exploding time series:
-component_naive_qoq_dfs_dict = load_component_naive_forecasts(file_path_component_qoq,
-    drop_ar2_components=["PRIVCON"])
+if settings.evaluate_forecast_components:
+    component_naive_qoq_dfs_dict = load_component_naive_forecasts(file_path_component_qoq,
+        drop_ar2_components=["PRIVCON"])
 
 
 
@@ -373,19 +378,23 @@ qoq_rev = align_df_to_mid_quarters(qoq_rev)  # Align to mid-quarter dates
 # Load Evaluation Data - component analysis
 # --------------------------------------------------------------------------------------------------
 
-component_eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_component_Evaluation_series')
-component_first_eval_dict = {}
 
-# Load evaluation data for each component
-if os.path.exists(component_eval_path):
-    for comp in included_components:
-        eval_file = os.path.join(component_eval_path, f'first_release_qoq_{comp}.xlsx')
-        if os.path.exists(eval_file):
-            try:
-                component_first_eval_dict[comp] = pd.read_excel(eval_file, index_col=0)
-                print(f"  Loaded evaluation data for component: {comp}")
-            except Exception as e:
-                print(f"  ⚠ Could not load evaluation data for {comp}: {e}")
+if settings.evaluate_forecast_components:
+
+    # Setup
+    component_eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_component_Evaluation_series')
+    component_first_eval_dict = {}
+
+    # Load evaluation data for each component
+    if os.path.exists(component_eval_path):
+        for comp in included_components:
+            eval_file = os.path.join(component_eval_path, f'first_release_qoq_{comp}.xlsx')
+            if os.path.exists(eval_file):
+                try:
+                    component_first_eval_dict[comp] = pd.read_excel(eval_file, index_col=0)
+                    print(f"  Loaded evaluation data for component: {comp}")
+                except Exception as e:
+                    print(f"  ⚠ Could not load evaluation data for {comp}: {e}")
 
 
 
@@ -441,46 +450,49 @@ for key, val in naive_qoq_dfs_dict_subset.items():
 # =================================================================================================#
 
 
-# -------------------------------------------------------------------------------------------------#
-#                                     Component ifo Forecasts
-# -------------------------------------------------------------------------------------------------#
+## Switch of if not needed:
+if settings.evaluate_forecast_components:
 
-## Filter for subset analysis
-ifo_qoq_forecasts_components_subset = {}
+    # ---------------------------------------------------------------------------------------------#
+    #                                   Component ifo Forecasts
+    # ---------------------------------------------------------------------------------------------#
 
-for comp_name in included_components:
-    # Apply filtering to each component's ifo qoq forecast data
-    ifo_qoq_forecasts_components_subset[comp_name] = filter_first_release_limit(ifo_qoq_forecasts_components[comp_name])
+    ## Filter for subset analysis
+    ifo_qoq_forecasts_components_subset = {}
 
-
-# -------------------------------------------------------------------------------------------------#
-#                                  Subset Naive to ifo Forecasts
-# -------------------------------------------------------------------------------------------------#
-
-## Match naive components to available ifo components:
-for comp_name in included_components:
-    if comp_name in ifo_qoq_forecasts_components and comp_name in component_naive_qoq_dfs_dict:
-        ifo_df = ifo_qoq_forecasts_components[comp_name]
-        naive_dict = component_naive_qoq_dfs_dict[comp_name]
-
-        filtered_naive_comp = match_ifo_naive_forecasts_dates(ifo_df, naive_dict)
-        
-        component_naive_qoq_dfs_dict[comp_name] = filtered_naive_comp
-        #[show(val) for key, val in filtered_naive_comp.items()]
+    for comp_name in included_components:
+        # Apply filtering to each component's ifo qoq forecast data
+        ifo_qoq_forecasts_components_subset[comp_name] = filter_first_release_limit(ifo_qoq_forecasts_components[comp_name])
 
 
-## Filter for subset analysis
-component_naive_qoq_dfs_dict_subset = {}
+    # ---------------------------------------------------------------------------------------------#
+    #                                Subset Naive to ifo Forecasts
+    # ---------------------------------------------------------------------------------------------#
 
-# Loop over all components
-for comp_name in included_components:
+    ## Match naive components to available ifo components:
+    for comp_name in included_components:
+        if comp_name in ifo_qoq_forecasts_components and comp_name in component_naive_qoq_dfs_dict:
+            ifo_df = ifo_qoq_forecasts_components[comp_name]
+            naive_dict = component_naive_qoq_dfs_dict[comp_name]
 
-    # Loop over the component dictionaries, than apply the filter to each model's dataframe
-    if comp_name in component_naive_qoq_dfs_dict:
-        component_naive_qoq_dfs_dict_subset[comp_name] = {
-            model_name: filter_first_release_limit(model_df)
-            for model_name, model_df in component_naive_qoq_dfs_dict[comp_name].items()
-        }
+            filtered_naive_comp = match_ifo_naive_forecasts_dates(ifo_df, naive_dict)
+            
+            component_naive_qoq_dfs_dict[comp_name] = filtered_naive_comp
+            #[show(val) for key, val in filtered_naive_comp.items()]
+
+
+    ## Filter for subset analysis
+    component_naive_qoq_dfs_dict_subset = {}
+
+    # Loop over all components
+    for comp_name in included_components:
+
+        # Loop over the component dictionaries, than apply the filter to each model's dataframe
+        if comp_name in component_naive_qoq_dfs_dict:
+            component_naive_qoq_dfs_dict_subset[comp_name] = {
+                model_name: filter_first_release_limit(model_df)
+                for model_name, model_df in component_naive_qoq_dfs_dict[comp_name].items()
+            }
 
 
 
@@ -896,7 +908,7 @@ if settings.evaluate_quarterly_gdp_forecasts:
 
     # Call print command
     print("\n\n" + "="*100)
-    print(' '*30 +"MAIN GDP EVALUATION")
+    print(' '*38 +"MAIN GDP EVALUATION")
     print("="*100 + "\n")
 
 

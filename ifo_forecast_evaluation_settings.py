@@ -230,7 +230,7 @@ Note:
 min_AR_observations = 20
 
 # For average-based models: set time frame over which the agent averages in quarters; list of int or 'FULL'
-average_horizons = [1,10]
+average_horizons = [1, 10]
 
 
 # Set how far the agent predicts into the future; int, NO LIST ITERATION
