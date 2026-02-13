@@ -126,7 +126,7 @@ included_components = settings.included_components
 
 # Try-except component name matching
 try:
-    allowed = {'GDP','PRIVCON','PUBCON','CONSTR','OPA','INVINV','DOMUSE','TRDBAL','EXPORT','IMPORT'}
+    allowed = {'GDP','PRIVCON','PUBCON','CONSTR', 'EQUIPMENT','OPA','INVINV','DOMUSE','TRDBAL','EXPORT','IMPORT'}
 
     invalid = set(settings.included_components) - allowed
     if invalid:
@@ -163,6 +163,8 @@ for component_name in included_components:
 
     # Loop through the component folders which are called in this instance, leaves previously called subfolders intact
     comp_folder = os.path.join(component_result_folder, component_name)
+    os.makedirs(comp_folder, exist_ok=True)
+
     if settings.clear_result_folders:
         folder_clear(comp_folder)
 
@@ -212,11 +214,11 @@ file_path_ifo_qoq_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', 
 ifo_qoq_forecasts_components = {}
 
 if os.path.exists(file_path_ifo_qoq_components):
-    component_files = glob.glob(os.path.join(file_path_ifo_qoq_components, 'ifo_qoq_forecasts_*.xlsx'))
+    component_files = glob.glob(os.path.join(file_path_ifo_qoq_components, 'qoq_forecast_data*.xlsx'))
     for file in component_files:
         filename = os.path.basename(file)
-        # Extract component name from 'ifo_qoq_forecasts_COMPONENT.xlsx'
-        comp_name = filename.replace('ifo_qoq_forecasts_', '').replace('.xlsx', '')
+        # Extract component name from 'qoq_forecast_data_COMPONENT.xlsx'
+        comp_name = filename.replace('qoq_forecast_data_', '').replace('.xlsx', '')
         
         if comp_name in included_components:
             ifo_qoq_forecasts_components[comp_name] = pd.read_excel(file, index_col=0)

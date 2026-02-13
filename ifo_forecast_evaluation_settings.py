@@ -28,16 +28,23 @@ evaluate_quarterly_gdp_forecasts = True # True or False
 evaluate_forecast_components = True # True or False
 
 # Select which components to include, List of strings
-included_components = ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
+included_components = ['EQUIPMENT']
 
-# ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
+# ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'EQUIPMENT','OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
 
 # Options:
 """
-'GDP' -> incompletely revisioned real-time data, kept as a sanity check; for proper evaluation run main analysis
-'PRIVCON' (private consumption), 'PUBCON' (public consumption), 'CONSTR' (construction), 
-'OPA' (other product assetes), 'INVINV' (investment inventories), 'DOMUSE' (domestic use),
-'TRDBAL' (trade balance), 'EXPORT', 'IMPORT'
+'GDP' -> for GDP, naive forecsats are built on incompletely revisioned real-time data, its only kept as a sanity check; for proper evaluation run main analysis
+'PRIVCON' -> private consumption, Private Konsumausgaben 
+'PUBCON' -> public consumption, Öffentlicher Konsum
+'CONSTR' -> construction, Bauten 
+'EQUIPMENT' -> Ausrüstungen
+'OPA' -> other product assets, Sonstige Anlagen 
+'INVINV' -> investment inventories, Vorratsinvestitionen
+'DOMUSE'-> domestic use, inländische Verwendung
+'TRDBAL' -> trade balance, Außenbeitrag 
+'EXPORT'
+'IMPORT'
 """
 
 
