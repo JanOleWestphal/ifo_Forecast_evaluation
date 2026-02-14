@@ -153,8 +153,11 @@ run_ifoCAST_long_term_evaluation = True  # True or False
 # 7. Decide whether to run the forecat enhancement module
 run_forecast_enhancement_module = True  # True or False, requieres data from module 6
 
-# 8. Run Judgemental Forecasting Analysis Module
-run_judgemental_forecasting_analysis = True  # True or False
+# 8. Run Judgemental Nowcasting Analysis Module
+run_judgemental_nowcasting_analysis = True  # True or False
+
+# 9. Run Judgemental Forecasting Analysis Module
+run_judgemental_forecasting_analysis = False # True or False
 
 
 
@@ -183,10 +186,10 @@ extend_rt_data_backwards = True # True or False
 run_gva_evaluation = True  # True or False
 
 # Define which quarter of which year should be the earliest data point, available from Q1-1970 onwards
-horizon_limit_year = 1970            # from 1970 onwards; set as integer
+horizon_limit_year = 1994            # from 1970 onwards; set as integer
 horizon_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
-
+## If AR_50 is set, data before 1994-Q1 only skewes the FULL average
 
 
 
@@ -230,7 +233,7 @@ Note:
 min_AR_observations = 20
 
 # For average-based models: set time frame over which the agent averages in quarters; list of int or 'FULL'
-average_horizons = [1, 10]
+average_horizons = [1, 10, 'FULL']
 
 
 # Set how far the agent predicts into the future; int, NO LIST ITERATION

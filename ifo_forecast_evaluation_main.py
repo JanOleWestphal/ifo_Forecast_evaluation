@@ -200,12 +200,22 @@ else:
 
 
 
+# ==================================================================================================
+#  Judgemental Nowcasting Analysis Module
+# ==================================================================================================
+if settings.run_judgemental_nowcasting_analysis:
+    execute_script('8_judgemental_nowcasting_analysis.py')
+else: 
+    print("Warning: No new judgemental nowcasting analysis output has been generated, set run_judgemental_forecasting_analysis =True if desired. \n ")
+
+
+
 
 # ==================================================================================================
 #  Judgemental Forecasting Analysis Module
 # ==================================================================================================
 if settings.run_judgemental_forecasting_analysis:
-    execute_script('8_judgemental_forecasting_analysis.py')
+    execute_script('9_judgemental_forecasting_analysis.py')
 else: 
     print("Warning: No new judgemental forecasting analysis output has been generated, set run_judgemental_forecasting_analysis =True if desired. \n ")
 

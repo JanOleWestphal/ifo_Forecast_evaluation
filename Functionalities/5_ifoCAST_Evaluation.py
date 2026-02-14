@@ -1586,7 +1586,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
         plot_error_lines(
             ifo_error_df,
             filtered_error_df,
-            ifocast_mode= True,
+            ifocast_mode= False,
             n_bars = 2,
             title=f"ifoCAST_filtered_{horizon.capitalize()}",
             show=False,
