@@ -1,14 +1,17 @@
-
+﻿
 # --------------------------------------------------------------------------------------------------
 # ==================================================================================================
-# Title:        Judgemental Nowcasting Analysis Module
+# Title:        Judgemental Forecasting Analysis Module
 #
 # Author:       Jan Ole Westphal
 # Date:         2026-01
 #
 # Description:  Subprogram to run an econometric analysis on judgemental derivations in german
-#               macroeconomic nowcasting.
+#               macroeconomic forecasting with evaluation at multiple horizons (h=0 to h=6).
 # 
+#               Evaluates forecasts issued at different vintage dates against realized outcomes
+#               at horizons 0 through 6 quarters ahead.
+#
 #               Runs all components from Data Processing to Output Processing and Visualizations.         
 # ==================================================================================================
 # --------------------------------------------------------------------------------------------------
@@ -17,35 +20,24 @@
 
 """"
 Main Tasks:
-- create a measure of judgemental derivations:
-    - derivation from the ifoCAST
+- Create measures of judgemental derivations at multiple horizons (h=0 to h=6):
+    - derivation from the ifoCAST (NOTE: ifoCAST evaluation currently toggled OFF)
     - derivation from an AR2-benchmark
-    - possibly: derivations from ifo's forecast methodology, if vintage data exists
+    - derivation from average models
 
-- Create a measure of net-improvement of derivations
-- Classify derivations:
+- Create measures of net-improvement of derivations across horizons
+- Classify derivations by:
     - direction of the shock
     - direction of the adjustment
-    - net improvement
+    - net improvement success
 
-    --> Derivation types: r -> realized value, , b -> benchmark, j -> judgemental forecasts
-        - negative shocks, r<b: 
-            - r<b<j (overconfidence), 
-            - r<j<b (prudent pessimism), 
-            - j<r<b; |j-b|<|r-b| (mild overpessimism), 
-            - j<r<b |j-b|>|r-b|(strong overpessimism)
-
-        - positive shocks, b<r:
-            - overpessimism: j<r<b
-            - prudent optimism: j>b>r
-            - mild overoptimism: b<r<j; |j-b|<|r-b|
-            - strong overoptimism: b<r<j; |j-b|>|r-b|
-
-
-- Analyze judgement persistence through the Pedersen (2025) methodology, (autoregression of derivaitons)
+- Analyze judgment quality as a function of forecast horizon
+- Compare absolute vs relative accuracy across horizons
 
 VISUALIZATIONS:
-- Judgemental vs Benchmark error bars by quarter
+- Judgemental vs Benchmark error bars by horizon
+- Derivations and net improvements across horizons
+- Summary statistics by horizon
 """
 
 
@@ -76,7 +68,7 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 
 from itertools import product
-from typing import Union, Dict, Optional, Mapping, Tuple, Dict
+from typing import Union, Dict, Optional, Mapping, Tuple
 
 
 # Import libraries
@@ -124,6 +116,21 @@ from Functionalities.helpers.helperfunctions import *
 
 from Functionalities.helpers.evalfunctions import *
 
+from Functionalities.helpers.judgemental_evalfunctions import (
+    add_error_columns,
+    _classify_derivations,
+    _infer_baseline_spec,
+    _generate_summary_statistics,
+    visualize_summary_statistics,
+    _format_quarterly_index,
+    _format_quarterly_index_with_horizon,
+    _apply_percentile_truncation,
+    plot_judgemental_derivations_or_net_improvement,
+    plot_error_comparison,
+    transform_eval_dataframe,
+    run_signals_analysis,
+)
+
 
 
 # ==================================================================================================
@@ -150,54 +157,92 @@ horizon_limit_quarter = settings.horizon_limit_quarter
 # Select whether to evaluate GVA predictions
 run_gva_evaluation = settings.run_gva_evaluation
 
+# Component evaluation settings (optional)
+evaluate_forecast_components = getattr(settings, "evaluate_forecast_components", False)
+included_components = getattr(settings, "included_components", [])
+
+
+# ==================================================================================================
+#                                  CONFIGURATION VARIABLES
+# ==================================================================================================
+
+# TODO: Currently ifoCAST evaluation is disabled. Set to True to enable.
+# NOTE: When enabled, implementation must include conditional expectation estimator
+#       for horizon-h forecasts. Currently placeholder - requires conditional mean logic.
+EVALUATE_IFOCAST = False
+
+# For horizons, number of periods ahead to evaluate (0 = nowcast, up to 6)
+MAX_HORIZON = 6
 
 
 ## Print Module header
-print("\nExecuting the Judgemental Derivations Analysis Module ... \n")
-
+print("\nExecuting the Judgemental Forecasting Analysis Module (Multi-Horizon) ... \n")
 
 
 # ==================================================================================================
-# SETUP OUTOUT FOLDER STRUCTURE
+#                                    HORIZON LOADING HELPERS                                      #
 # ==================================================================================================
 
-## Result Folder Paths
-result_folder = os.path.join(wd, '5_Judgemental_Derivations_Analysis', '1_Nowcasting')
+def extract_horizon_forecasts(
+    forecast_df: pd.DataFrame,
+    *,
+    colname: str,
+    max_horizon: int = 6,
+) -> Dict[int, pd.DataFrame]:
+    """
+    Extract horizon-specific forecasts from a forecast matrix.
 
+    For each column (forecast vintage date), match the row with the same quarter (h=0)
+    and then the next rows for horizons h=1..max_horizon.
+    Output DataFrames are indexed by the target quarter date (row date).
+    """
+    if forecast_df.empty:
+        return {}
 
-## Subfolder
-main_analysis_folder = os.path.join(result_folder, '0_Main_Analysis')
-main_analysis_graphs_folder = os.path.join(main_analysis_folder, 'Graphs')
-main_analysis_tables_folder = os.path.join(main_analysis_folder, 'Tables')
+    row_quarters = pd.to_datetime(forecast_df.index).to_period("Q")
+    col_quarters = pd.to_datetime(forecast_df.columns).to_period("Q")
 
-table_folder = os.path.join(result_folder, '1_Tables_EDA')
-graph_folder = os.path.join(result_folder, '2_Plots_EDA')
+    horizon_records: Dict[int, list[dict]] = {h: [] for h in range(max_horizon + 1)}
 
+    for col, col_quarter in zip(forecast_df.columns, col_quarters):
+        matching_rows = np.where(row_quarters == col_quarter)[0]
 
+        if len(matching_rows) != 1:
+            raise ValueError(
+                f"Expected exactly one quarterly row match for column {col} ({col_quarter}), "
+                f"found {len(matching_rows)}."
+            )
 
-## Graph subfolders
-graph_folder_derivations = os.path.join(graph_folder, '1_Derivations_and_Improvements')
-graph_folder_errors = os.path.join(graph_folder, '2_Error_Comparisons')
+        start_idx = matching_rows[0]
 
+        for h in range(max_horizon + 1):
+            target_idx = start_idx + h
+            if target_idx >= len(forecast_df.index):
+                continue
 
+            target_row = forecast_df.index[target_idx]
+            horizon_records[h].append(
+                {
+                    "target_date": target_row,
+                    colname: forecast_df.loc[target_row, col],
+                }
+            )
 
-## Create if needed
-for folder in [result_folder, table_folder, graph_folder, graph_folder_derivations, graph_folder_errors, main_analysis_folder, main_analysis_graphs_folder, main_analysis_tables_folder]:
-    os.makedirs(folder, exist_ok=True)
+    horizons_dict: Dict[int, pd.DataFrame] = {}
+    for h, records in horizon_records.items():
+        if not records:
+            continue
 
-# Additional subfolders for organized plots
-#graph_folder_summary = os.path.join(graph_folder_derivations, 'summary_statistics')
-graph_folder_net_improvement = os.path.join(graph_folder_derivations, 'net_improvement')
+        df_out = pd.DataFrame(records).set_index("target_date")
+        df_out = align_df_to_mid_quarters(df_out)
+        horizons_dict[h] = df_out[[colname]].copy()
 
-for folder in [ graph_folder_net_improvement]:
-    os.makedirs(folder, exist_ok=True)
+    return horizons_dict
 
 
 ## Clear Result Folders
 #if settings.clear_result_folders:
 #    folder_clear(folder_path)
-
-
 
 
 
@@ -209,7 +254,7 @@ for folder in [ graph_folder_net_improvement]:
 # -------------------------------------------------------------------------------------------------#
 
 # -------------------------------------------------------------------------------------------------#
-# Load realized GDP-series
+# Load realized GDP series
 # -------------------------------------------------------------------------------------------------#
 eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
 qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
@@ -221,79 +266,81 @@ qoq_first_eval = align_df_to_mid_quarters(qoq_first_eval)  # Align to mid-quarte
 
 
 # -------------------------------------------------------------------------------------------------#
-# Load ifo qoq nowcasts
+# Load ifo qoq forecasts (with horizons)
 # -------------------------------------------------------------------------------------------------#
 
+# NOTE: For forecasting with horizons, we need to structure data as follows:
+# For each forecast vintage date on the COLUMN, we extract 7 consecutive quarters
+# starting from the same quarter as the forecast date (h=0) through 6 quarters ahead (h=6).
+#
+# Example: If forecast issued on 2010Q1 (column), we extract:
+#   h=0: realized value for 2010Q1 (row matching column quarter)
+#   h=1: realized value for 2010Q2 (row below that)
+#   h=2: realized value for 2010Q3 (row 2 below)
+#   ... and so on up to h=6
+#
+# TODO: Implement horizon loading logic below once forecast data structure is finalized
 
-
-
-## HELPER: Build nowcasts by matching row/column on quarterly level.
-def nowcast_builder(df, colname="ifo_judgemental_nowcast"):
-
-    #show(df)
-
-    # Convert row and column labels to quarterly Periods for robust matching
-    ifo_rows_quarter = pd.to_datetime(df.index).to_period('Q')
-    ifo_cols_quarter = pd.to_datetime(df.columns).to_period('Q')
-
-    # Collect records for the output DataFrame
-    records = []
-    for col, col_quarter in zip(df.columns, ifo_cols_quarter):
-        # Find rows whose quarter equals the column's quarter
-        matching_rows = np.where(ifo_rows_quarter == col_quarter)[0]
-
-        # Expect exactly one matching row per column; otherwise signal an error
-        if len(matching_rows) != 1:
-            raise ValueError(
-                f"Expected exactly one quarterly row match for column {col} ({col_quarter}), "
-                f"found {len(matching_rows)}."
-            )
-
-        # Get the row label (original index) and the corresponding value
-        row_label = df.index[matching_rows[0]]
-        records.append({
-            'column_date': col,
-            'matched_row_date': row_label,
-            colname: df.loc[row_label, col]
-        })
-
-    # Build output DataFrame indexed by the original column dates
-    out = pd.DataFrame(records).set_index('column_date')
-    df_out = out[[colname]].copy()
-
-    # Align to mid-quarter dates for downstream compatibility
-    df_out = align_df_to_mid_quarters(df_out)
-
-    #show(df_out)
-
-    return df_out
-
-# Path
+# Path to forecast files
 file_path_ifo_qoq = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_series',
                                   'ifo_qoq_forecasts.xlsx' )
 
 # Load 
 ifo_qoq_forecasts = pd.read_excel(file_path_ifo_qoq, index_col=0)
 
-# Extract nowcasts
-ifo_judgemental_nowcasts = nowcast_builder(ifo_qoq_forecasts)
-#show(ifo_judgemental_nowcasts)
+ifo_judgemental_forecasts = extract_horizon_forecasts(
+    ifo_qoq_forecasts,
+    colname="judgemental",
+    max_horizon=MAX_HORIZON,
+)
+
+# -------------------------------------------------------------------------------------------------#
+# Load ifo component forecasts (optional)
+# -------------------------------------------------------------------------------------------------#
+
+ifo_qoq_forecasts_components = {}
+ifo_component_forecasts = {}
+
+if evaluate_forecast_components:
+    file_path_ifo_qoq_components = os.path.join(
+        wd, '0_0_Data', '2_Processed_Data', '3_gdp_component_forecast'
+    )
+
+    ifo_qoq_forecasts_components = load_ifo_component_forecasts(
+        file_path_ifo_qoq_components,
+        included_components=included_components,
+    )
+
+    for comp_name, comp_df in ifo_qoq_forecasts_components.items():
+        ifo_component_forecasts[comp_name] = extract_horizon_forecasts(
+            comp_df,
+            colname="judgemental",
+            max_horizon=MAX_HORIZON,
+        )
+        print(f"Loaded ifo component forecasts (h=0..{MAX_HORIZON}): {comp_name}")
 
 
 # -------------------------------------------------------------------------------------------------#
-# Load ifoCAST nowcasts
+# Load ifoCAST forecasts (currently disabled)
 # -------------------------------------------------------------------------------------------------#
-ifoCAST_nowcasts_full_path = os.path.join(
-    wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_nowcasts_full.xlsx')
 
-# Load 
-ifoCAST_nowcast = pd.read_excel(ifoCAST_nowcasts_full_path , index_col=0)
-ifoCAST_nowcast = align_df_to_mid_quarters(ifoCAST_nowcast)  # Align to mid-quarter dates
-#show(ifoCAST_nowcast)
+# TODO: When EVALUATE_IFOCAST=True, implement conditional expectation estimator
+#       Current ifoCAST contains nowcasts only. For horizon-h forecasts, need:
+#       - Conditional mean of future realized values given current information
+#       - Multi-step ahead forecast structure
+#
+# if EVALUATE_IFOCAST:
+#     ifoCAST_forecasts_full_path = os.path.join(
+#         wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_forecasts_full.xlsx')
+#     ifoCAST_forecasts = pd.read_excel(ifoCAST_forecasts_full_path, index_col=0)
+#     ifoCAST_forecasts = align_df_to_mid_quarters(ifoCAST_forecasts)
+# else:
+#     print("INFO: ifoCAST forecasting evaluation is disabled (EVALUATE_IFOCAST=False)")
+#     ifoCAST_forecasts = None
 
 
 # -------------------------------------------------------------------------------------------------#
-# Load AR2-nowcasts AND AVERAGE-nowcasts
+# Load AR2 forecasts AND AVERAGE forecasts (with horizons)
 # -------------------------------------------------------------------------------------------------#
 
 # Paths to the folders containing the Excel files
@@ -304,1515 +351,511 @@ naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naiv
 
 # Define target naive models
 naive_target_models = ['AR2', 'AVERAGE_1', 'AVERAGE_10', 'AVERAGE_FULL']
-naive_nowcasts_dict = {}
+naive_forecasts_dict = {}
 
 for model_name in naive_target_models:
-    # Use regex boundary match to avoid e.g. "AVERAGE_1" matching "AVERAGE_10_9"
     pattern = re.compile(rf'^{re.escape(model_name)}(_|$)')
     matches = [k for k in naive_qoq_dfs_dict if pattern.match(k)]
-    if matches:
-        print(f"Found naive forecast: {model_name}")
-        df_model = naive_qoq_dfs_dict[matches[0]]
-        
-        # Get Nowcasts
-        # Create column name like "naiveAR2", "naiveAVERAGE_1"
-        col_name_naive = f"naive{model_name}"
-        nowcasts = nowcast_builder(df_model, colname=col_name_naive)
-        #print(f"Debug: {col_name_naive} head:")
-        #print(nowcasts.head())
-        naive_nowcasts_dict[model_name] = nowcasts
-        #show(nowcasts)
-    else:
+    if not matches:
         print(f"Warning: {model_name} not found in naive forecasts. Proceeding without it.")
+        continue
+
+    df_model = naive_qoq_dfs_dict[matches[0]]
+    naive_forecasts_dict[model_name] = extract_horizon_forecasts(
+        df_model,
+        colname=f"naive{model_name}",
+        max_horizon=MAX_HORIZON,
+    )
 
 
 # Ensure existence of naive forecasts
-if not naive_nowcasts_dict:
-    raise ValueError("No naive forecast models found (AR2, AVERAGE_10, AVERAGE_FULL, etc.). Cannot proceed with analysis. Check settings file and re-run Naive Forecaster.")
-
-
-
-
-
-# -------------------------------------------------------------------------------------------------#
-# =================================================================================================#
-#                                          PROCESS DATA                                            #
-# =================================================================================================#
-# -------------------------------------------------------------------------------------------------#
-
-
-# =================================================================================================#
-#                                       Merge to joint df                                          #
-# =================================================================================================#
-
-# Prepare lists for merging
-dfs_to_merge = [qoq_first_eval, ifo_judgemental_nowcasts, ifoCAST_nowcast]
-col_names_merge = ['realized', 'judgemental', 'ifoCast']
-
-# Add naive models if they exist
-for model_name, df_nowcast in naive_nowcasts_dict.items():
-    dfs_to_merge.append(df_nowcast)
-    col_names_merge.append(f"naive{model_name}")
-
-## Call merge_quarterly_dfs_dropna() from helperfunctions
-joint_nowcast_df = merge_quarterly_dfs_dropna(
-    dfs=dfs_to_merge,
-    col_names=col_names_merge
-)
-
-# Re-align to mid-quarter dates to ensure consistency after merge
-joint_nowcast_df = align_df_to_mid_quarters(joint_nowcast_df)
-
-#show(joint_nowcast_df)
-
-## Create a clean copy
-joint_nowcast_base_df = joint_nowcast_df.copy()
-
-
-
-# -------------------------------------------------------------------------------------------------#
-# OPTIONAL: filter rows
-# -------------------------------------------------------------------------------------------------#
-
-"""NOTE: all rows are indexed by latest date of quarter"""
-
-## Adjust filter if needed, boundary inclusive
-joint_nowcast_df = filter_df_by_datetime_index(joint_nowcast_df, '2000-01-01', '2100-01-01')
-
-# Re-align to mid-quarter dates after filtering
-joint_nowcast_df = align_df_to_mid_quarters(joint_nowcast_df)
-
-#show(joint_nowcast_df)
-
-
-
-
-
-# =================================================================================================#
-#                                    Create error measures                                         #
-# =================================================================================================#
-
-## for ifo judgemental, AR2 and ifoCAST nowcasts
-
-# Loop through cols and substract them from the leading realized values col
-def add_error_columns(df, prefix="error"):
-
-    first_col = df.columns[0]
-
-    for col in df.columns[1:]:
-        df[f"{prefix}_{first_col}_minus_{col}"] = df[col] - df[first_col] 
-
-    return df
-
-# Call error function
-joint_nowcast_df = add_error_columns(joint_nowcast_df)
-#show(joint_nowcast_df)
-
-## Save
-joint_nowcast_df.to_excel(
-    excel_writer=os.path.join(table_folder, "Nowcast_Series_full.xlsx")
-)
-
-
-
-# =================================================================================================#
-#                                   Create derivation measures                                     #
-# =================================================================================================#
-
-## from ifoCAST
-joint_nowcast_df["derivation_from_ifoCast"] = (
-    joint_nowcast_df["judgemental"] - joint_nowcast_df["ifoCast"]
-)
-
-## from Naive Models (AR2, Average, etc.)
-for model_name in naive_nowcasts_dict.keys():
-    col_name = f"naive{model_name}"
-    # Check if column exists (it should after merge)
-    if col_name in joint_nowcast_df.columns:
-        joint_nowcast_df[f"derivation_from_{model_name}"] = (
-            joint_nowcast_df["judgemental"] - joint_nowcast_df[col_name]
-        )
-
-
-
-
-# =================================================================================================#
-#                                    Obtain net improvements                                       #
-# =================================================================================================#
-
-# ------------------------------------------------------------------------------------
-# Net improvement of judgemental forecast relative to baseline forecasts
-#
-# Definitions
-# ----------
-# Linear improvement  :  NI_lin  = |e_baseline| - |e_judgemental|
-# Quadratic improvement: NI_quad = e_baseline^2 - e_judgemental^2
-#
-# Positive values  -> judgement improved the forecast
-# Negative values  -> judgement worsened the forecast
-#
-# Required columns already present:
-#   realized
-#   judgemental
-#   naive{Model}
-#   ifoCast
-#   error_realized_minus_judgemental
-#   error_realized_minus_naive{Model}
-#   error_realized_minus_ifoCast
-#   derivation_from_ifoCast
-#   derivation_from_{Model}
-# ------------------------------------------------------------------------------------
-
-# ---------- Judgement vs ifoCast ----------
-joint_nowcast_df["net_improvement_jdg_ifoCast_lin"] = (
-    joint_nowcast_df["error_realized_minus_ifoCast"].abs()
-    - joint_nowcast_df["error_realized_minus_judgemental"].abs()
-)
-
-joint_nowcast_df["net_improvement_jdg_ifoCast_quad"] = (
-    joint_nowcast_df["error_realized_minus_ifoCast"]**2
-    - joint_nowcast_df["error_realized_minus_judgemental"]**2
-)
-
-
-# ---------- Judgement vs Naive Models ----------
-for model_name in naive_nowcasts_dict.keys():
-
-    col_name = f"naive{model_name}"
-    if col_name in joint_nowcast_df.columns:
-        joint_nowcast_df[f"net_improvement_jdg_{model_name}_lin"] = (
-            joint_nowcast_df[f"error_realized_minus_{col_name}"].abs()
-            - joint_nowcast_df["error_realized_minus_judgemental"].abs()
-        )
-
-        joint_nowcast_df[f"net_improvement_jdg_{model_name}_quad"] = (
-            joint_nowcast_df[f"error_realized_minus_{col_name}"]**2
-            - joint_nowcast_df["error_realized_minus_judgemental"]**2
-        )
-
-#show(joint_nowcast_df)
-
-
-
-
-
-# =================================================================================================#
-#                                Classify Judgemental Derications                                  #
-# =================================================================================================#
-
-"""
-r<b: True (negative shock), False; 'r_less_b'
-j<b: True (negatve adjustment), False; 'j_less_b'
-|j-r|<|b-r| True (judgemental improvement), False; 'jdiff_less_bdiff'
-"""
-
-# -------------------------------------------------------------------------------------------------#
-# Classification builder function
-# -------------------------------------------------------------------------------------------------#
-
-
-def _classify_derivations(df, b_col: str, suffix: str, r_col: str = "realized", j_col: str = "judgemental"):
-    r = df[r_col]
-    j = df[j_col]
-    b = df[b_col]
-
-    # Ensure NA-safe comparisons: keep pd.NA where any input is missing
-    valid = r.notna() & j.notna() & b.notna()
-
-    df[f"r_less_{suffix}"] = pd.Series(np.where(valid, r < b, pd.NA), index=df.index, dtype="boolean")
-    df[f"j_less_{suffix}"] = pd.Series(np.where(valid, j < b, pd.NA), index=df.index, dtype="boolean")
-    df[f"j_diff_less_{suffix}_diff"] = pd.Series(
-        np.where(valid, (j - r).abs() < (b - r).abs(), pd.NA),
-        index=df.index,
-        dtype="boolean",
+if not naive_forecasts_dict:
+    raise ValueError(
+        "No naive forecast models found (AR2, AVERAGE_10, AVERAGE_FULL, etc.). "
+        "Cannot proceed with analysis. Check settings file and re-run Naive Forecaster."
     )
 
 
 # -------------------------------------------------------------------------------------------------#
-# Evaluation against the ifoCAST df
+# Load naive component forecasts (optional)
 # -------------------------------------------------------------------------------------------------#
-_classify_derivations(joint_nowcast_df, b_col="ifoCast", suffix="ifoCast")
+
+component_naive_qoq_dfs_dict = {}
+naive_component_forecasts = {}
+
+if evaluate_forecast_components:
+    file_path_component_qoq = os.path.join(
+        wd, '0_0_Data', '3_Naive_Forecaster_Data', '3_QoQ_Component_Forecast_Tables'
+    )
+
+    component_naive_qoq_dfs_dict = load_component_naive_forecasts(
+        file_path_component_qoq,
+        included_components=included_components,
+        drop_ar2_components=["PRIVCON"],
+    )
+
+    for comp_name, model_dict in component_naive_qoq_dfs_dict.items():
+        naive_component_forecasts[comp_name] = {}
+        for model_name, df_model in model_dict.items():
+            naive_component_forecasts[comp_name][model_name] = extract_horizon_forecasts(
+                df_model,
+                colname=f"naive{model_name}",
+                max_horizon=MAX_HORIZON,
+            )
+        print(f"Loaded naive component forecasts (h=0..{MAX_HORIZON}): {comp_name}")
+
+
 
 
 # -------------------------------------------------------------------------------------------------#
-# Evaluation against Naive Models
-# -------------------------------------------------------------------------------------------------#
-for model_name in naive_nowcasts_dict.keys():
-    col_name = f"naive{model_name}"
-    if col_name in joint_nowcast_df.columns:
-        _classify_derivations(joint_nowcast_df, b_col=col_name, suffix=model_name)
-
-#show(joint_nowcast_df)
-
-
-
 # =================================================================================================#
-#                                  Split dfs and save results                                      #
+#                                    OUTPUT FOLDER SETUP                                           #
 # =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
 
-## Split
-# Create copy
-judgment_eval_df_joint = joint_nowcast_df.copy()
+# Base output folder for forecasting analysis (differs from nowcasting)
+base_output_folder = os.path.join(wd, '5_Judgemental_Forecasts_Derivations_Analysis')
 
-# Columns always included
-base_cols = [
-    "realized",
-    "judgemental",
-    "error_realized_minus_judgemental",
-]
+os.makedirs(base_output_folder, exist_ok=True)
 
-# ---- ifoCast subset ----
-ifo_cols = [c for c in judgment_eval_df_joint.columns if "ifoCast" in c]
-judgment_eval_df_ifoCast = judgment_eval_df_joint[base_cols + ifo_cols].copy()
-#show(judgment_eval_df_ifoCast)
+# Create main and components subfolders
+main_folder = os.path.join(base_output_folder, '0_Main')
+components_folder = os.path.join(base_output_folder, '1_Components')
+os.makedirs(main_folder, exist_ok=True)
+os.makedirs(components_folder, exist_ok=True)
 
-judgment_eval_df_joint.to_excel(os.path.join(table_folder, "judgemental_derivations_full.xlsx"))
-judgment_eval_df_ifoCast.to_excel(os.path.join(table_folder, "judgemental_derivations_ifoCast.xlsx"))
+# Create subfolders for each baseline model in main folder
+# Output structure: 5_Judgemental_Forecasts_Derivations_Analysis/0_Main/{baseline_model}/
+model_output_folders = {}
+for model_name in naive_target_models:
+    model_folder = os.path.join(main_folder, model_name)
+    os.makedirs(model_folder, exist_ok=True)
+    model_output_folders[model_name] = model_folder
 
-
-# ---- Naive Models subsets ----
-judgment_eval_dfs = {}
-for model_name in naive_nowcasts_dict.keys():
-    # Identify model specific columns: contain model_name but not others
-    # Strategy: columns containing model_name. 
-    # Use exact checks to avoid substring matches if needed, but naive{model_name} is distinct enough usually.
-    # Be careful with AVERAGE_1 vs AVERAGE_10.
+    # Create subdirectories for EDA and main analysis
+    table_folder_EDA = os.path.join(model_folder, '0_EDA_Tables')
+    graph_folder_EDA = os.path.join(model_folder, '0_EDA_Graphs')
+    graph_folder_EDA_derivations = os.path.join(model_folder, '1_Derivations_Graphs')
+    graph_folder_EDA_errors = os.path.join(model_folder, '2_Errors_Graphs')
+    graph_folder_EDA_net_improvement = os.path.join(model_folder, '3_Net_Improvement_Graphs')
     
-    model_specific_cols = []
-    for c in judgment_eval_df_joint.columns:
-        if model_name in c:
-            # Handle potential overlaps if any (e.g. AVERAGE_1 in AVERAGE_10)
-            # If model_name is "AVERAGE_1", skip "AVERAGE_10"
-            if model_name == "AVERAGE_1" and "AVERAGE_10" in c:
-                continue
-            model_specific_cols.append(c)
+    main_analysis_tables_folder = os.path.join(model_folder, '4_Main_Analysis_Tables')
+    main_analysis_graphs_folder = os.path.join(model_folder, '5_Main_Analysis_Graphs')
+
+    for folder in [table_folder_EDA, graph_folder_EDA, graph_folder_EDA_derivations,
+                   graph_folder_EDA_errors, graph_folder_EDA_net_improvement,
+                   main_analysis_tables_folder, main_analysis_graphs_folder]:
+        os.makedirs(folder, exist_ok=True)
+
+# Create component folders for each component and baseline model upfront
+# This ensures the folder structure exists even if there's no data to process
+if evaluate_forecast_components and included_components:
+    for component_name in included_components:
+        for model_name in naive_target_models:
+            comp_model_folder = os.path.join(components_folder, component_name, model_name)
             
-    df_subset = judgment_eval_df_joint[base_cols + model_specific_cols].copy()
-    judgment_eval_dfs[model_name] = df_subset
+            # Create all subdirectories matching the main analysis structure
+            comp_folders_to_create = [
+                os.path.join(comp_model_folder, '0_EDA_Tables'),
+                os.path.join(comp_model_folder, '0_EDA_Graphs'),
+                os.path.join(comp_model_folder, '1_Derivations_Graphs'),
+                os.path.join(comp_model_folder, '2_Errors_Graphs'),
+                os.path.join(comp_model_folder, '3_Net_Improvement_Graphs'),
+                os.path.join(comp_model_folder, '4_Main_Analysis_Tables'),
+                os.path.join(comp_model_folder, '5_Main_Analysis_Graphs'),
+            ]
+            
+            for folder in comp_folders_to_create:
+                os.makedirs(folder, exist_ok=True)
+
+
+# Define a function to create component folders
+def setup_component_folder(component_name, baseline_model):
+    """Create folder structure for a specific component and baseline model"""
+    comp_model_folder = os.path.join(components_folder, component_name, baseline_model)
     
-    # Save
-    df_subset.to_excel(os.path.join(table_folder, f"judgemental_derivations_{model_name}.xlsx"))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# -------------------------------------------------------------------------------------------------#
-# =================================================================================================#
-#                            BASELINE ANALYSIS: Judgemental Derivations                            #
-# =================================================================================================#
-# -------------------------------------------------------------------------------------------------#
-
-
-# =================================================================================================#
-#                                        Builder Functions                                         #
-# =================================================================================================#
-
-## HELPER
-
-def _infer_baseline_spec(df: pd.DataFrame) -> Dict[str, str]:
-    """
-    Infer which baseline the df refers to (ifoCast vs AR2 vs AVERAGE etc.) and return column spec.
-    """
-    cols = set(df.columns)
-
-    # ifoCast
-    if "ifoCast" in cols or any("ifoCast" in c for c in cols):
-        return {
-            "baseline_label": "ifoCast",
-            "shock_col": "r_less_ifoCast",
-            "derivation_col": "derivation_from_ifoCast",
-            "ni_lin_col": "net_improvement_jdg_ifoCast_lin",
-            "ni_quad_col": "net_improvement_jdg_ifoCast_quad",
-            "error_baseline_col": "error_realized_minus_ifoCast",
-            "adjustment_col": "j_less_ifoCast",
-            "improvement_col": "j_diff_less_ifoCast_diff",
-        }
-
-    # Naive Models
-    # Look for derivation_from_{Model} column
-    for c in cols:
-        if c.startswith("derivation_from_"):
-             model_part = c.replace("derivation_from_", "")
-             if model_part == "ifoCast": continue
-             
-             # Check if corresponding shock classification exists to confirm it's a valid baseline set
-             if f"r_less_{model_part}" in cols:
-                 return {
-                    "baseline_label": model_part,
-                    "shock_col": f"r_less_{model_part}",
-                    "derivation_col": f"derivation_from_{model_part}",
-                    "ni_lin_col": f"net_improvement_jdg_{model_part}_lin",
-                    "ni_quad_col": f"net_improvement_jdg_{model_part}_quad",
-                    "error_baseline_col": f"error_realized_minus_naive{model_part}",
-                    "adjustment_col": f"j_less_{model_part}",
-                    "improvement_col": f"j_diff_less_{model_part}_diff",
-                 }
-
-    raise ValueError(f"Could not infer baseline. Columns found: {cols}")
-
-
-## Statistics Table builder
-
-def _generate_summary_statistics(df: pd.DataFrame, baseline_label: str, shock_filter: Optional[bool] = None) -> dict:
-    """
-    Generate summary statistics for a judgemental evaluation dataframe.
-    """
-    spec = _infer_baseline_spec(df)
-    shock_col = spec["shock_col"]
-    ni_lin_col = spec["ni_lin_col"]
-    ni_quad_col = spec["ni_quad_col"]
-    error_baseline_col = spec.get("error_baseline_col") 
+    # Create subdirectories matching the main analysis structure
+    comp_table_eda_folder = os.path.join(comp_model_folder, '0_EDA_Tables')
+    comp_graph_eda_folder = os.path.join(comp_model_folder, '0_EDA_Graphs')
+    comp_derivations_folder = os.path.join(comp_model_folder, '1_Derivations_Graphs')
+    comp_errors_folder = os.path.join(comp_model_folder, '2_Errors_Graphs')
+    comp_net_improvement_folder = os.path.join(comp_model_folder, '3_Net_Improvement_Graphs')
+    comp_main_tables_folder = os.path.join(comp_model_folder, '4_Main_Analysis_Tables')
+    comp_main_graphs_folder = os.path.join(comp_model_folder, '5_Main_Analysis_Graphs')
     
-    # If not in spec (old logic compat), standardizing inference
-    if not error_baseline_col:
-        # Fallback for ifoCast
-        if baseline_label == "ifoCast":
-            error_baseline_col = "error_realized_minus_ifoCast"
-        else: # AR2 old fallback
-            error_baseline_col = "error_realized_minus_naiveAR2"
-
-    error_jdg_col = "error_realized_minus_judgemental"
-    adjustment_col = spec.get("adjustment_col")
-    improvement_col = spec.get("improvement_col")
-    
-    # Remove rows with NaN values for calculations
-    df_clean = df.dropna(subset=[shock_col, error_jdg_col, error_baseline_col, 
-                                   ni_lin_col, ni_quad_col, adjustment_col, improvement_col])
-    
-    # Apply shock filter if specified
-    if shock_filter is not None:
-        shock_series_bool = df_clean[shock_col].astype(bool)
-        if shock_filter:
-            # Negative shocks (r < baseline)
-            df_clean = df_clean[shock_series_bool]
-            subsample_label = "Negative Shocks"
-        else:
-            # Positive shocks (r >= baseline)
-            df_clean = df_clean[~shock_series_bool]
-            subsample_label = "Positive Shocks"
-    else:
-        subsample_label = "Overall"
-    
-    # Shock counts
-    shock_series = df_clean[shock_col].astype(bool)
-    negative_shocks = shock_series.sum()
-    positive_shocks = (~shock_series).sum()
-    
-    # Average shock size (absolute error)
-    avg_jdg_error = df_clean[error_jdg_col].abs().mean()
-    avg_baseline_error = df_clean[error_baseline_col].abs().mean()
-    
-    # Average net improvements
-    avg_ni_lin = df_clean[ni_lin_col].mean()
-    avg_ni_quad = df_clean[ni_quad_col].mean()
-    
-    # Adjustment counts (j_less_baseline)
-    adjustment_series = df_clean[adjustment_col].astype(bool)
-    adjustments_below_baseline = adjustment_series.sum()
-    adjustments_above_baseline = (~adjustment_series).sum()
-    
-    # Improvement counts (times adjustments led to improvements)
-    improvement_series = df_clean[improvement_col].astype(bool)
-    successful_improvements = improvement_series.sum()
-    unsuccessful_adjustments = (~improvement_series).sum()
+    for folder in [comp_model_folder, comp_table_eda_folder, comp_graph_eda_folder,
+                   comp_derivations_folder, comp_errors_folder, comp_net_improvement_folder,
+                   comp_main_tables_folder, comp_main_graphs_folder]:
+        os.makedirs(folder, exist_ok=True)
     
     return {
-        "Baseline": baseline_label,
-        "Subsample": subsample_label,
-        "Negative Shocks (r < baseline)": int(negative_shocks),
-        "Positive Shocks (r >= baseline)": int(positive_shocks),
-        "Avg Judgemental Error (abs)": round(avg_jdg_error, 4),
-        "Avg Baseline Error (abs)": round(avg_baseline_error, 4),
-        "Avg Net Improvement (Linear)": round(avg_ni_lin, 4),
-        "Avg Net Improvement (Quadratic)": round(avg_ni_quad, 4),
-        "Adjustments Below Baseline (j < b)": int(adjustments_below_baseline),
-        "Adjustments Above Baseline (j >= b)": int(adjustments_above_baseline),
-        "Adjustments Reducing Error (|j-r| < |b-r|)": int(successful_improvements),
-        "Adjustments Increasing Error": int(unsuccessful_adjustments),
-        "Total Observations": len(df_clean),
+        'table_eda': comp_table_eda_folder,
+        'graph_eda': comp_graph_eda_folder,
+        'graph_derivations': comp_derivations_folder,
+        'graph_errors': comp_errors_folder,
+        'graph_net_improvement': comp_net_improvement_folder,
+        'table_main': comp_main_tables_folder,
+        'graph_main': comp_main_graphs_folder,
     }
 
 
-# =================================================================================================#
-#                                    Generate Summary Statistics                                   #
-# =================================================================================================#
-
-# Define visualization function first
-def visualize_summary_statistics(df: pd.DataFrame, save_folder: str | Path) -> None:
-    """
-    Create comprehensive visualizations of summary statistics.
-    Dynamics version: adapts to available baselines.
-    """
-    save_folder = Path(save_folder)
-    save_folder.mkdir(parents=True, exist_ok=True)
-    
-    baselines = df['Baseline'].unique()
-    num_baselines = len(baselines)
-    
-    preferred_subsample_order = ["Overall", "Negative Shocks", "Positive Shocks"]
-    present_subsamples = df["Subsample"].dropna().unique().tolist()
-    subsamples = [s for s in preferred_subsample_order if s in present_subsamples]
-    subsamples.extend([s for s in present_subsamples if s not in subsamples])
-    
-    # helper to get data for a baseline aligned to subsamples
-    def get_data(baseline, col):
-        sub_df = df[df['Baseline'] == baseline].set_index("Subsample").reindex(subsamples)
-        return sub_df[col].values
-
-    # Colors for baselines
-    # Use pyplot.colormaps to avoid MatplotlibDeprecationWarning from get_cmap
-    cmap = plt.colormaps['tab10']
-    colors = {b: cmap(i) for i, b in enumerate(baselines)}
-    
-    x_pos = np.arange(len(subsamples))
-    # width depending on number of baselines. total width = 0.8?
-    width = 0.8 / num_baselines
-    
-    # ---- PLOT 1: Sample sizes across subsamples ----
-    fig, ax = plt.subplots(figsize=(10, 5))
-    
-    for i, base in enumerate(baselines):
-        offset = (i - (num_baselines - 1) / 2) * width
-        vals = get_data(base, 'Total Observations')
-        ax.bar(x_pos + offset, vals, width, label=base, alpha=0.8, color=colors[base])
-
-    ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Number of Observations', fontsize=11, fontweight='bold')
-    ax.set_title('Sample Sizes by Subsample and Baseline', fontsize=12, fontweight='bold')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(subsamples)
-    ax.legend()
-    ax.grid(axis='y', alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(save_folder / 'summary_sample_sizes.png', dpi=180, bbox_inches='tight')
-    plt.close(fig)
-    
-    # ---- PLOT 2: Average Errors (subplots per baseline) ----
-    # 3 bars per subsample: Jdg Error, Baseline Error, Improvement
-    fig, axes = plt.subplots(1, num_baselines, figsize=(7*num_baselines, 5), sharey=True)
-    if num_baselines == 1: axes = [axes]
-    
-    sub_width = 0.25
-    
-    for i, base in enumerate(baselines):
-        ax = axes[i]
-        
-        err_jdg = get_data(base, 'Avg Judgemental Error (abs)')
-        err_base = get_data(base, 'Avg Baseline Error (abs)')
-        ni_lin = get_data(base, 'Avg Net Improvement (Linear)')
-        
-        ax.bar(x_pos - sub_width, err_jdg, sub_width, label='Avg |judgemental - realized|', alpha=0.85, color='steelblue')
-        ax.bar(x_pos, err_base, sub_width, label='Avg |baseline - realized|', alpha=0.85, color='darkorange')
-        ax.bar(x_pos + sub_width, ni_lin, sub_width, label='Avg net improvement (linear)', alpha=0.85, color='seagreen')
-        
-        ax.axhline(0, color='black', linestyle='-', linewidth=0.8)
-        ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
-        ax.set_title(f'{base} Baseline', fontsize=12, fontweight='bold')
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels(subsamples)
-        ax.grid(axis='y', alpha=0.3)
-        if i == 0:
-            ax.set_ylabel('Average Value', fontsize=11, fontweight='bold')
-            ax.legend(fontsize=9, loc='upper left')
-
-    fig.suptitle('Average Forecast Errors by Subsample and Baseline', fontsize=12, fontweight='bold')
-    fig.tight_layout()
-    fig.savefig(save_folder / 'summary_average_errors_by_baseline.png', dpi=180, bbox_inches='tight')
-    plt.close(fig)
-    
-    # ---- PLOT 3: Net Improvements (Linear) ----
-    fig, ax = plt.subplots(figsize=(12, 5))
-    
-    for i, base in enumerate(baselines):
-        offset = (i - (num_baselines - 1) / 2) * width
-        vals = get_data(base, 'Avg Net Improvement (Linear)')
-        ax.bar(x_pos + offset, vals, width, label=base, alpha=0.8, color=colors[base])
-    
-    ax.axhline(0, color='black', linestyle='-', linewidth=0.8)
-    ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Average Linear Net Improvement', fontsize=11, fontweight='bold')
-    ax.set_title('Judgemental vs Baseline Linear Improvements by Subsample', fontsize=12, fontweight='bold')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(subsamples)
-    ax.legend()
-    ax.grid(axis='y', alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(save_folder / 'summary_net_improvement_linear.png', dpi=180, bbox_inches='tight')
-    plt.close(fig)
-    
-    # ---- PLOT 4: Net Improvements (Quadratic) ----
-    # similar logic
-    fig, ax = plt.subplots(figsize=(12, 5))
-    for i, base in enumerate(baselines):
-        offset = (i - (num_baselines - 1) / 2) * width
-        vals = get_data(base, 'Avg Net Improvement (Quadratic)')
-        ax.bar(x_pos + offset, vals, width, label=base, alpha=0.8, color=colors[base])
-        
-    ax.axhline(0, color='black', linestyle='-', linewidth=0.8)
-    ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Average Quadratic Net Improvement', fontsize=11, fontweight='bold')
-    ax.set_title('Judgemental vs Baseline Quadratic Improvements by Subsample', fontsize=12, fontweight='bold')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(subsamples)
-    ax.legend()
-    ax.grid(axis='y', alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(save_folder / 'summary_net_improvement_quadratic.png', dpi=180, bbox_inches='tight')
-    plt.close(fig)
-    
-    # ---- PLOT 5: Adjustment Success Rates ----
-    fig, ax = plt.subplots(figsize=(12, 5))
-    
-    for i, base in enumerate(baselines):
-        offset = (i - (num_baselines - 1) / 2) * width
-        
-        succ = get_data(base, 'Adjustments Reducing Error (|j-r| < |b-r|)')
-        fail = get_data(base, 'Adjustments Increasing Error')
-        tot = succ + fail
-        # handle div 0
-        rate = np.divide(succ, tot, out=np.zeros_like(succ, dtype=float), where=tot!=0) * 100
-        
-        ax.bar(x_pos + offset, rate, width, label=base, alpha=0.8, color=colors[base])
-    
-    ax.axhline(50, color='black', linestyle='--', linewidth=1, alpha=0.5, label='50% (Random)')
-    ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Success Rate (%)', fontsize=11, fontweight='bold')
-    ax.set_title('Adjustment Success Rates (% reducing error) by Subsample', fontsize=12, fontweight='bold')
-    ax.set_xticks(x_pos)
-    ax.set_xticklabels(subsamples)
-    ax.set_ylim([0, 100])
-    ax.legend()
-    ax.grid(axis='y', alpha=0.3)
-    fig.tight_layout()
-    fig.savefig(save_folder / 'summary_adjustment_success_rates.png', dpi=180, bbox_inches='tight')
-    plt.close(fig)
-    
-    # ---- PLOT 6: Adjustment Direction Distribution ----
-    fig, axes = plt.subplots(1, num_baselines, figsize=(7*num_baselines, 5), sharey=True)
-    if num_baselines == 1: axes = [axes]
-
-    for i, base in enumerate(baselines):
-        ax = axes[i]
-        
-        below = get_data(base, 'Adjustments Below Baseline (j < b)')
-        above = get_data(base, 'Adjustments Above Baseline (j >= b)')
-        
-        for idx in range(len(subsamples)):
-             ax.bar(idx, below[idx], label='Below' if idx == 0 else '', alpha=0.8, color='steelblue')
-             ax.bar(idx, above[idx], bottom=below[idx], label='Above' if idx == 0 else '', alpha=0.8, color='lightcoral')
-        
-        ax.set_xlabel('Subsample', fontsize=11, fontweight='bold')
-        ax.set_title(f'Adjustment Direction - {base} Baseline', fontsize=12, fontweight='bold')
-        ax.set_xticks(x_pos)
-        ax.set_xticklabels(subsamples)
-        ax.legend()
-        ax.grid(axis='y', alpha=0.3)
-        if i == 0:
-            ax.set_ylabel('Number of Adjustments', fontsize=11, fontweight='bold')
-    
-    fig.tight_layout()
-    fig.savefig(save_folder / 'summary_adjustment_directions.png', dpi=180, bbox_inches='tight')
-    plt.close(fig)
-    
-    print(f"\nSummary statistics visualizations saved to {save_folder}")
-
-
-# Generate summary statistics for baselines with subsamples
-summary_stats_list = []
-
-# ifoCast baseline
-summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_ifoCast, "ifoCast", shock_filter=None))
-summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_ifoCast, "ifoCast", shock_filter=True))
-summary_stats_list.append(_generate_summary_statistics(judgment_eval_df_ifoCast, "ifoCast", shock_filter=False))
-
-# Naive baselines
-for model_name, df_sub in judgment_eval_dfs.items():
-    summary_stats_list.append(_generate_summary_statistics(df_sub, model_name, shock_filter=None))
-    summary_stats_list.append(_generate_summary_statistics(df_sub, model_name, shock_filter=True))
-    summary_stats_list.append(_generate_summary_statistics(df_sub, model_name, shock_filter=False))
-
-# Create summary statistics DataFrame
-summary_stats_df = pd.DataFrame(summary_stats_list)
-
-print(f"\nSummary Statistics:")
-#print("\n" + summary_stats_df.to_string())
-
-# Generate visualizations FIRST
-visualize_summary_statistics(summary_stats_df, graph_folder_derivations)
-
-# Save to Excel
-summary_stats_output_path = os.path.join(table_folder, "Summary_Statistics.xlsx")
-summary_stats_df.to_excel(summary_stats_output_path, index=False, sheet_name="Summary Statistics")
-print(f"\nSummary Statistics saved to {summary_stats_output_path}")
-
-
-
-
-
-
-
-
-# =================================================================================================#
-#                                   Analyze forecast persistence                                   #
-# =================================================================================================#
-
-## IDEA: use AR2 forecasts to obtain a baseline here
-
-
-
-
-
-
-
+print(f"Output folders created in: {base_output_folder}")
+print(f"  Main GDP Analysis:")
+print(f"    - AR2")
+print(f"    - AVERAGE_1")
+print(f"    - AVERAGE_10")
+print(f"    - AVERAGE_FULL")
+if evaluate_forecast_components and included_components:
+    print(f"  Component Analysis:")
+    for comp in included_components:
+        print(f"    - {comp}")
 
 
 
 
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
-#                                       Visualize Results                                          #
+#                               FORECAST EVALUATION PIPELINE                                      #
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
 
-# =================================================================================================#
-#                                    Derivation and Improvements                                   #
-# =================================================================================================#
-
-# -------------------------------------------------------------------------------------------------#
-# Error Bar Plotter
-# -------------------------------------------------------------------------------------------------#
-
-## Reformat Helper
-def _format_quarterly_index(dt_index) -> list[str]:
+def run_forecast_evaluation_pipeline(
+    judgemental_forecasts_dict: Dict[int, pd.DataFrame],
+    naive_forecasts_dict: Dict[str, Dict[int, pd.DataFrame]],
+    ifoCast_forecasts_dict: Optional[Dict[int, pd.DataFrame]],
+    realized_df: pd.DataFrame,
+    baseline_model_name: str,
+    output_folders: Dict[str, str],
+    max_horizon: int = 6,
+    evaluate_ifoCast: bool = False,
+    time_filter_start: str = '2000-01-01',
+    time_filter_end: str = '2100-01-01'
+) -> None:
     """
-    Convert a datetime index to yyyy-Qx format for display.
-    """
-    def to_quarter_str(ts):
-        if pd.isna(ts):
-            return "NaN"
-        # Determine quarter from month
-        quarter = (ts.month - 1) // 3 + 1
-        return f"{ts.year}-Q{quarter}"
+    Run evaluation pipeline for judgemental forecasts across multiple horizons.
     
-    return [to_quarter_str(ts) for ts in dt_index]
-
-## MAIN PLOTTER FUNCTION
-def plot_judgemental_derivations_or_net_improvement(
-    df: pd.DataFrame,
-    kind: str,  # "derivation" or "net_improvement"
-    graph_folder: str | Path,
-    header: Optional[str] = None,
-    filename_prefix: Optional[str] = None,
-    filename_suffix: Optional[str] = None,
-    show: bool = False,
-    dpi: int = 180,
-    y_axis_percentile: Optional[float] = None,  # e.g., 95.0 to truncate at 95th percentile (both tails)
-) -> Path | list[Path]:
-    """
-    Plot either:
-      - kind="derivation": judgemental derivations (j - baseline) over the index
-      - kind="net_improvement": net improvements (LINEAR and QUADRATIC in separate plots)
-
-    Bars are coloured by "shock" (negative shock): r_less_<baseline> == True
-      - Red   : negative shock (realised < baseline)
-      - Green : otherwise
-
-    Args:
-        df: DataFrame with relevant columns
-        kind: "derivation" or "net_improvement"
-        graph_folder: Directory to save plots
-        header: Custom plot title
-        filename_prefix: Custom filename prefix
-        filename_suffix: Optional suffix to append to filename (e.g., "_truncated")
-        show: Whether to display plots
-        dpi: Resolution for saved figures
-        y_axis_percentile: If provided (e.g., 95.0), truncate y-axis at percentile bounds 
-                          (symmetric around zero). Useful for outlier visualization.
-
-    Returns:
-        Path: for "derivation" kind
-        list[Path]: for "net_improvement" kind (two plots: linear and quadratic)
-    """
-    if kind not in {"derivation", "net_improvement"}:
-        raise ValueError("kind must be either 'derivation' or 'net_improvement'.")
-
-    spec = _infer_baseline_spec(df)
-    baseline_label = spec["baseline_label"]
-    shock_col = spec["shock_col"]
-
-    graph_folder = Path(graph_folder)
-    graph_folder.mkdir(parents=True, exist_ok=True)
-
-    # X axis: convert to positional indices for consistent handling
-    x = df.index
-    x_labels = _format_quarterly_index(x)
-    pos = np.arange(len(df))
-
-    # Shock colouring (NA-safe)
-    shock = df[shock_col].astype("boolean")
-    colours = np.where(shock.fillna(False).to_numpy(), "red", "green")
-
-    # Legend patches for shock definition
-    shock_legend = [
-        Patch(facecolor="red", edgecolor="none", label=f"Negative shock: realised < {baseline_label}"),
-        Patch(facecolor="green", edgecolor="none", label=f"Positive shock: realised ≥ {baseline_label}"),
-    ]
-
-    if kind == "derivation":
-        fig, ax = plt.subplots(figsize=(12, 4.8))
-        ax.axhline(0.0, linewidth=1.0)
-
-        y_col = spec["derivation_col"]
-        y = df[y_col].to_numpy()
-
-        # Bar plot (colour by shock) - use positional indices for consistent handling
-        ax.bar(pos, y, color=colours)
-
-        # Tick labels: format as yyyy-Qx
-        ax.set_xticks(pos)
-        ax.set_xticklabels(x_labels, rotation=45, ha="right")
-
-        # Title/labels
-        title = header or f"Judgemental derivations vs {baseline_label}"
-        ax.set_title(title)
-        ax.set_ylabel(f"Derivation (judgemental - {baseline_label})")
-
-        # Apply y-axis truncation if requested
-        if y_axis_percentile is not None:
-            _apply_percentile_truncation(ax, y, y_axis_percentile)
-
-        # Intelligent legend
-        ax.legend(handles=shock_legend, loc="best", frameon=True)
-
-        # Filename
-        prefix = filename_prefix or "judgemental_derivations"
-        suffix = f"_{filename_suffix}" if filename_suffix else ""
-        out_path = graph_folder / f"{prefix}_vs_{baseline_label}{suffix}.png"
-
-        fig.tight_layout()
-        fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
-
-        return out_path
-
-    else:  # net_improvement - create TWO separate plots
-        lin_col = spec["ni_lin_col"]
-        quad_col = spec["ni_quad_col"]
-
-        y_lin = df[lin_col].to_numpy()
-        y_quad = df[quad_col].to_numpy()
-
-        out_paths = []
-        prefix = filename_prefix or "net_improvement"
-        suffix = f"_{filename_suffix}" if filename_suffix else ""
-
-        # --- PLOT 1: LINEAR IMPROVEMENT ---
-        fig, ax = plt.subplots(figsize=(12, 4.8))
-        ax.axhline(0.0, linewidth=1.0)
-
-        ax.bar(pos, y_lin, color=colours, label="Net improvement (linear)")
-
-        # Tick labels: format as yyyy-Qx
-        ax.set_xticks(pos)
-        ax.set_xticklabels(x_labels, rotation=45, ha="right")
-
-        title = header or f"Net improvement (linear) of judgemental forecast vs {baseline_label}"
-        ax.set_title(title)
-        ax.set_ylabel("Improvement (>0 is better than baseline)")
-
-        # Apply y-axis truncation if requested
-        if y_axis_percentile is not None:
-            _apply_percentile_truncation(ax, y_lin, y_axis_percentile)
-
-        # Intelligent legend: metric legend + shock explanation
-        metric_legend = ax.legend(loc="upper left", frameon=True)
-        ax.add_artist(metric_legend)
-        ax.legend(handles=shock_legend, loc="best", frameon=True)
-
-        out_path_lin = graph_folder / f"{prefix}_linear_jdg_vs_{baseline_label}{suffix}.png"
-        fig.tight_layout()
-        fig.savefig(out_path_lin, dpi=dpi, bbox_inches="tight")
-        out_paths.append(out_path_lin)
-
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
-
-        # --- PLOT 2: QUADRATIC IMPROVEMENT ---
-        fig, ax = plt.subplots(figsize=(12, 4.8))
-        ax.axhline(0.0, linewidth=1.0)
-
-        ax.bar(pos, y_quad, color=colours, alpha=0.7, label="Net improvement (quadratic)")
-
-        # Tick labels: format as yyyy-Qx
-        ax.set_xticks(pos)
-        ax.set_xticklabels(x_labels, rotation=45, ha="right")
-
-        title = header or f"Net improvement (quadratic) of judgemental forecast vs {baseline_label}"
-        ax.set_title(title)
-        ax.set_ylabel("Improvement (>0 is better than baseline)")
-
-        # Apply y-axis truncation if requested
-        if y_axis_percentile is not None:
-            _apply_percentile_truncation(ax, y_quad, y_axis_percentile)
-
-        # Intelligent legend: metric legend + shock explanation
-        metric_legend = ax.legend(loc="upper left", frameon=True)
-        ax.add_artist(metric_legend)
-        ax.legend(handles=shock_legend, loc="best", frameon=True)
-
-        out_path_quad = graph_folder / f"{prefix}_quadratic_jdg_vs_{baseline_label}.png"
-        fig.tight_layout()
-        fig.savefig(out_path_quad, dpi=dpi, bbox_inches="tight")
-        out_paths.append(out_path_quad)
-
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
-
-        return out_paths
-
-## Plotter Zoomer
-def _apply_percentile_truncation(ax, data: np.ndarray, percentile: float) -> None:
-    """
-    Truncate y-axis symmetrically based on percentile.
+    Parameters
+    ----------
+    judgemental_forecasts_dict : Dict[int, pd.DataFrame]
+        Dictionary mapping horizon h -> DataFrame of judgemental forecasts at h
+    naive_forecasts_dict : Dict[str, Dict[int, pd.DataFrame]]
+        Dictionary mapping model_name -> {horizon -> forecast DataFrame}
+    ifoCast_forecasts_dict : Optional[Dict[int, pd.DataFrame]]
+        Dictionary mapping horizon -> ifoCAST DataFrame, or None if not evaluating
+    realized_df : pd.DataFrame
+        DataFrame of realized values
+    baseline_model_name : str
+        Name of baseline model (e.g., "AR2", "AVERAGE_10")
+    output_folders : Dict[str, str]
+        Dictionary with keys: 'table_eda', 'graph_eda', 'graph_derivations', 'graph_errors',
+                             'graph_net_improvement', 'table_main', 'graph_main'
+    max_horizon : int
+        Maximum horizon to evaluate (default 6)
+    evaluate_ifoCast : bool
+        Whether to include ifoCAST in evaluation
+    time_filter_start : str
+        Start date for filtering (format: YYYY-MM-DD)
+    time_filter_end : str
+        End date for filtering (format: YYYY-MM-DD)
     
-    Args:
-        ax: Matplotlib axis object
-        data: Numeric data array
-        percentile: Percentile threshold (0-100). E.g., 95 means truncate tails beyond 95th percentile.
-    """
-    # Handle NaN values
-    clean_data = data[~np.isnan(data)]
+    Returns
+    -------
+    None
+        Results are saved to output folders
     
-    if len(clean_data) == 0:
+    Notes
+    -----
+    TODO: Implementation of full horizon-based evaluation pipeline.
+    Current outline:
+    1. For each horizon h (0 to max_horizon):
+       a. Extract judgemental, naive, and (optionally) ifoCAST forecasts at horizon h
+       b. Merge with realized values at corresponding dates
+       c. Compute error measures
+       d. Compute derivation measures
+       e. Compute net improvement measures
+       f. Classify derivations
+    2. Generate horizon-specific summary statistics
+    3. Generate horizon-aware visualizations
+    4. Aggregate results across horizons for cross-horizon comparison
+    """
+    
+    print(f"\nRunning forecast evaluation pipeline for baseline model: {baseline_model_name}")
+    print(f"Evaluating horizons: h=0 to h={max_horizon}")
+
+    table_folder_eda = output_folders['table_eda']
+    graph_folder_eda = output_folders['graph_eda']
+    graph_folder_derivations = output_folders['graph_derivations']
+    graph_folder_errors = output_folders['graph_errors']
+    graph_folder_net_improvement = output_folders['graph_net_improvement']
+    table_folder_main = output_folders['table_main']
+    graph_folder_main = output_folders['graph_main']
+
+    summary_stats_list: list[dict] = []
+
+    baseline_horizons = naive_forecasts_dict.get(baseline_model_name, {})
+    if not baseline_horizons:
+        print(f"  WARNING: No naive forecasts found for baseline {baseline_model_name}")
         return
-    
-    # Calculate bounds symmetrically
-    lower_bound = np.percentile(clean_data, 100 - percentile)
-    upper_bound = np.percentile(clean_data, percentile)
-    
-    # Ensure symmetric margins around zero if both bounds have same sign
-    if lower_bound >= 0:
-        margin = upper_bound * (1 - percentile / 100)
-        lower_bound = -margin
-    elif upper_bound <= 0:
-        margin = abs(lower_bound) * (1 - percentile / 100)
-        upper_bound = margin
-    
-    ax.set_ylim(lower_bound, upper_bound)
 
+    for h in range(max_horizon + 1):
+        if h not in judgemental_forecasts_dict or h not in baseline_horizons:
+            print(f"  Skipping horizon h={h}: missing data")
+            continue
 
-# =================================================================================================#
-#                                         Generate Plots                                           #
-# =================================================================================================#
+        judgemental_df = judgemental_forecasts_dict[h]
+        baseline_df = baseline_horizons[h]
 
-# Dictionary of all dataframes to iterate over for plotting
-all_models_dfs = {'ifoCast': judgment_eval_df_ifoCast}
-if naive_nowcasts_dict:
-    all_models_dfs.update(judgment_eval_dfs)
+        dfs_to_merge = [realized_df, judgemental_df, baseline_df]
+        col_names_merge = ["realized", "judgemental", f"naive{baseline_model_name}"]
 
-for model_name, df_eval in all_models_dfs.items():
-    if df_eval is None or df_eval.empty:
-        continue
-    
-    print(f"Generating plots for baseline: {model_name}")
+        if evaluate_ifoCast and ifoCast_forecasts_dict and h in ifoCast_forecasts_dict:
+            dfs_to_merge.append(ifoCast_forecasts_dict[h])
+            col_names_merge.append("ifoCast")
 
-    # -------------------------------------------------------------------------------------------------#
-    # Judgemental derivations
-    # -------------------------------------------------------------------------------------------------#
-    try:
-        # Save to main derivations and net_improvement folders (no per-baseline folders)
-        derivations_folder = graph_folder_derivations
-        netimp_folder = graph_folder_net_improvement
-
-        os.makedirs(derivations_folder, exist_ok=True)
-        os.makedirs(netimp_folder, exist_ok=True)
-
-        plot_judgemental_derivations_or_net_improvement(
-            df=df_eval,
-            kind="derivation",
-            graph_folder=derivations_folder,
-            header=f"Judgemental derivations vs {model_name}",
-            filename_prefix="judgemental_derivations",
-            show=False,
+        joint_df = merge_quarterly_dfs_dropna(
+            dfs=dfs_to_merge,
+            col_names=col_names_merge,
         )
-    except Exception as e:
-        print(f"  Error plotting derivations for {model_name}: {e}")
 
-    # -------------------------------------------------------------------------------------------------#
-    # Net improvement (TRUNCATED at 95th percentile)
-    # -------------------------------------------------------------------------------------------------#
-    try:
-        plot_judgemental_derivations_or_net_improvement(
-            df=df_eval,
-            kind="net_improvement",
-            graph_folder=netimp_folder,
-            header=None,
-            filename_prefix="net_improvement",
-            filename_suffix=f"t95p",
-            show=False,
-            y_axis_percentile=95.0,
+        joint_df = align_df_to_mid_quarters(joint_df)
+        joint_df = filter_df_by_datetime_index(joint_df, time_filter_start, time_filter_end)
+        joint_df = align_df_to_mid_quarters(joint_df)
+
+        joint_df = add_error_columns(joint_df)
+
+        if evaluate_ifoCast and "ifoCast" in joint_df.columns:
+            joint_df["derivation_from_ifoCast"] = joint_df["judgemental"] - joint_df["ifoCast"]
+            joint_df["net_improvement_jdg_ifoCast_lin"] = (
+                joint_df["error_realized_minus_ifoCast"].abs()
+                - joint_df["error_realized_minus_judgemental"].abs()
+            )
+            joint_df["net_improvement_jdg_ifoCast_quad"] = (
+                joint_df["error_realized_minus_ifoCast"] ** 2
+                - joint_df["error_realized_minus_judgemental"] ** 2
+            )
+            _classify_derivations(joint_df, b_col="ifoCast", suffix="ifoCast")
+
+        joint_df[f"derivation_from_{baseline_model_name}"] = (
+            joint_df["judgemental"] - joint_df[f"naive{baseline_model_name}"]
         )
-    except Exception as e:
-        print(f"  Error plotting net improvement (truncated) for {model_name}: {e}")
 
-    # -------------------------------------------------------------------------------------------------#
-    # Net improvement (FULL, no truncation)
-    # -------------------------------------------------------------------------------------------------#
-    try:
-        plot_judgemental_derivations_or_net_improvement(
-            df=df_eval,
-            kind="net_improvement",
-            graph_folder=netimp_folder,
-            header=None,
-            filename_prefix="net_improvement",
-            filename_suffix=f"full",
-            show=False,
-            y_axis_percentile=None,
+        joint_df[f"net_improvement_jdg_{baseline_model_name}_lin"] = (
+            joint_df[f"error_realized_minus_naive{baseline_model_name}"].abs()
+            - joint_df["error_realized_minus_judgemental"].abs()
         )
-    except Exception as e:
-        print(f"  Error plotting net improvement (full) for {model_name}: {e}")
 
-
-
-# =================================================================================================#
-#                          Judgemental vs Benchmark Error Bars Time Series                         #
-# =================================================================================================#
-
-# -------------------------------------------------------------------------------------------------#
-# Error Bar Series Plotter
-# -------------------------------------------------------------------------------------------------#
-
-def plot_error_comparison(
-    df: pd.DataFrame,
-    error_col_jdg: str,  # e.g., "error_realized_minus_judgemental"
-    error_col_benchmark: str,  # e.g., "error_realized_minus_ifoCast"
-    benchmark_label: str,  # e.g., "ifoCast" or "AR2"
-    graph_folder: str | Path,
-    filename_prefix: Optional[str] = None,
-    filename_suffix: Optional[str] = None,
-    show: bool = False,
-    dpi: int = 180,
-    y_axis_percentile: Optional[float] = None,
-) -> Path:
-    """
-    Plot judgemental vs benchmark errors side-by-side by quarter.
-    
-    Bars are coloured by "shock" classification (r_less_<benchmark>):
-      - Red   : negative shock (realised < benchmark)
-      - Green : otherwise
-    
-    Args:
-        df: DataFrame with error columns and shock classification
-        error_col_jdg: Column name for judgemental error
-        error_col_benchmark: Column name for benchmark error
-        benchmark_label: Label for benchmark (e.g., "ifoCast", "AR2")
-        graph_folder: Directory to save plot
-        filename_prefix: Custom filename prefix
-        filename_suffix: Optional suffix to append to filename
-        show: Whether to display plot
-        dpi: Resolution for saved figures
-        y_axis_percentile: Optional truncation at percentile (e.g., 95.0)
-    
-    Returns:
-        Path to saved plot
-    """
-    spec = _infer_baseline_spec(df)
-    shock_col = spec["shock_col"]
-    
-    graph_folder = Path(graph_folder)
-    graph_folder.mkdir(parents=True, exist_ok=True)
-    
-    # X axis
-    x = df.index
-    x_labels = _format_quarterly_index(x)
-    pos = np.arange(len(df))
-    
-    # Data
-    y_jdg = df[error_col_jdg].to_numpy()
-    y_bench = df[error_col_benchmark].to_numpy()
-    
-    # Shock colouring (NA-safe)
-    shock = df[shock_col].astype("boolean")
-    colours = np.where(shock.fillna(False).to_numpy(), "red", "green")
-    
-    # Legend patches
-    shock_legend = [
-        Patch(facecolor="red", edgecolor="none", label=f"Negative shock: realised < {benchmark_label}"),
-        Patch(facecolor="green", edgecolor="none", label=f"Positive shock: realised ≥ {benchmark_label}"),
-    ]
-    
-    fig, ax = plt.subplots(figsize=(12, 4.8))
-    ax.axhline(0.0, linewidth=1.0)
-    
-    # Plot side-by-side bars
-    width = 0.38
-    ax.bar(pos - width/2, y_jdg, width=width, color=colours, label="Judgemental error", alpha=0.9)
-    ax.bar(pos + width/2, y_bench, width=width, color=colours, label=f"{benchmark_label} error", alpha=0.6)
-    
-    # Tick labels: format as yyyy-Qx
-    ax.set_xticks(pos)
-    ax.set_xticklabels(x_labels, rotation=45, ha="right")
-    
-    title = f"Judgemental vs {benchmark_label} Forecast Errors by Quarter"
-    ax.set_title(title)
-    ax.set_ylabel("Error (forecast - realized)")
-    
-    # Apply y-axis truncation if requested
-    if y_axis_percentile is not None:
-        combined_data = np.concatenate([y_jdg[~np.isnan(y_jdg)], y_bench[~np.isnan(y_bench)]])
-        _apply_percentile_truncation(ax, combined_data, y_axis_percentile)
-    
-    # Intelligent legend: metric legend + shock explanation
-    metric_legend = ax.legend(loc="upper left", frameon=True)
-    ax.add_artist(metric_legend)
-    ax.legend(handles=shock_legend, loc="best", frameon=True)
-    
-    # Filename
-    prefix = filename_prefix or "error_comparison"
-    suffix = f"_{filename_suffix}" if filename_suffix else ""
-    out_path = graph_folder / f"{prefix}_{benchmark_label}{suffix}.png"
-    
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
-    
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
-    
-    return out_path
-
-
-# -------------------------------------------------------------------------------------------------#
-# Run Error Comparison Plots for all models
-# -------------------------------------------------------------------------------------------------#
-
-for model_name, df_eval in all_models_dfs.items():
-    if df_eval is None or df_eval.empty:
-        continue
-        
-    # Determine error column for benchmark
-    if model_name == "ifoCast":
-        error_col_benchmark = "error_realized_minus_ifoCast"
-    else:
-        # Construct error column: error_realized_minus_naive{Model}
-        error_col_benchmark = f"error_realized_minus_naive{model_name}"
-    
-    # Truncated version
-    try:
-        # Save error plots to main error folder
-        error_baseline_folder = graph_folder_errors
-        os.makedirs(error_baseline_folder, exist_ok=True)
-
-        plot_error_comparison(
-            df=df_eval,
-            error_col_jdg="error_realized_minus_judgemental",
-            error_col_benchmark=error_col_benchmark,
-            benchmark_label=model_name,
-            graph_folder=error_baseline_folder,
-            filename_prefix="error_comparison",
-            filename_suffix="t95p",
-            show=False,
-            y_axis_percentile=95.0,
+        joint_df[f"net_improvement_jdg_{baseline_model_name}_quad"] = (
+            joint_df[f"error_realized_minus_naive{baseline_model_name}"] ** 2
+            - joint_df["error_realized_minus_judgemental"] ** 2
         )
-    except Exception as e:
-        print(f"  Error plotting error comparison (truncated) for {model_name}: {e}")
 
-    # Full version
-    try:
-        plot_error_comparison(
-            df=df_eval,
-            error_col_jdg="error_realized_minus_judgemental",
-            error_col_benchmark=error_col_benchmark,
-            benchmark_label=model_name,
-            graph_folder=error_baseline_folder,
-            filename_prefix="error_comparison",
-            filename_suffix="full",
-            show=False,
-            y_axis_percentile=None,
-        )
-    except Exception as e:
-        print(f"  Error plotting error comparison (full) for {model_name}: {e}")
+        _classify_derivations(joint_df, b_col=f"naive{baseline_model_name}", suffix=baseline_model_name)
 
+        horizon_table_path = os.path.join(table_folder_eda, f"Forecast_Series_h{h}.xlsx")
+        joint_df.to_excel(horizon_table_path)
 
+        base_cols = [
+            "realized",
+            "judgemental",
+            "error_realized_minus_judgemental",
+        ]
 
+        model_cols = [c for c in joint_df.columns if baseline_model_name in c]
+        eval_df = joint_df[base_cols + model_cols].copy()
 
+        for shock_filter in (None, True, False):
+            stats = _generate_summary_statistics(eval_df, baseline_model_name, shock_filter=shock_filter)
+            stats["Horizon"] = h
+            summary_stats_list.append(stats)
 
-
-
-
-
-
-
-
-
-# -------------------------------------------------------------------------------------------------#
-# =================================================================================================#
-#                        MAIN IDENTIFICATION ANALYSIS: Judgemental Derivations                     #
-# =================================================================================================#
-# -------------------------------------------------------------------------------------------------#
-
-
-"""
-Model to be estimated: GDP forecasting as a compination of an autoregressive component,
-observable covariates and a judgement component.
-
-"""
-
-
-
-# =================================================================================================#
-#                                 Get core evaluation dataframe(s)                                 #
-# =================================================================================================#
-
-
-## Get function to retrieve the equation components
-
-def transform_eval_dataframe(df, naive_col_name):
-    """
-    Transform evaluation dataframe by calculating signals relative to naive baseline.
-    
-    Parameters:
-    -----------
-    df : pd.DataFrame
-        DataFrame with columns ['realized', naive_col_name, 'ifoCast', 'judgemental']
-    naive_col_name : str
-        Name of the naive baseline column (e.g., 'naiveAR2', 'naiveAVERAGE_10')
-    
-    Returns:
-    --------
-    pd.DataFrame
-        Transformed dataframe with columns ['realized', naive_col_name, 'ifoCast_signal', 'judgemental_signal']
-    """
-    # Create a copy to avoid modifying the original
-    df_transformed = df.copy()
-    
-    # Calculate signals: realized - naive for the last two columns
-
-    df_transformed['ifoCast_signal'] = df_transformed['ifoCast'] - df_transformed[naive_col_name]
-    df_transformed['judgemental_signal'] = df_transformed['judgemental'] - df_transformed['ifoCast_signal'] - df_transformed[naive_col_name]
-    df_transformed['error'] = df_transformed['realized'] - df_transformed['judgemental']
-    
-    # Drop the original ifoCast and judgemental columns
-    df_transformed = df_transformed.drop(columns=['ifoCast', 'judgemental'])
-    
-    return df_transformed
-
-
-
-# Apply to all dataframes
-if naive_nowcasts_dict and "AR2" in naive_nowcasts_dict:
-    equation_eval_df_AR2 = joint_nowcast_df[['realized', 'naiveAR2', 'ifoCast', 'judgemental']].copy()
-    equation_eval_df_AR2 = transform_eval_dataframe(equation_eval_df_AR2, 'naiveAR2')
-else:
-    print("WARNING: AR2 baseline not available, skipping AR2-specific analyses; check settings file and Re-Run Naive Forecaster")
-
-
-if naive_nowcasts_dict and "AVERAGE_1" in naive_nowcasts_dict:
-    equation_eval_df_AVERAGE_1 = joint_nowcast_df[['realized', 'naiveAVERAGE_1', 'ifoCast', 'judgemental']].copy()
-    equation_eval_df_AVERAGE_1 = transform_eval_dataframe(equation_eval_df_AVERAGE_1, 'naiveAVERAGE_1')
-else:
-    print("WARNING: AVERAGE_1 baseline not available, skipping AVERAGE_1-specific analyses; check settings file and Re-Run Naive Forecaster")
-
-
-if naive_nowcasts_dict and "AVERAGE_10" in naive_nowcasts_dict:
-    equation_eval_df_AVERAGE_10 = joint_nowcast_df[['realized', 'naiveAVERAGE_10', 'ifoCast', 'judgemental']].copy()
-    equation_eval_df_AVERAGE_10 = transform_eval_dataframe(equation_eval_df_AVERAGE_10, 'naiveAVERAGE_10')
-else:
-    print("WARNING: AVERAGE_10 baseline not available, skipping AVERAGE_10-specific analyses; check settings file and Re-Run Naive Forecaster")
-
-
-if naive_nowcasts_dict and "AVERAGE_FULL" in naive_nowcasts_dict:   
-    equation_eval_df_AVERAGE_FULL = joint_nowcast_df[['realized', 'naiveAVERAGE_FULL', 'ifoCast', 'judgemental']].copy()
-    equation_eval_df_AVERAGE_FULL = transform_eval_dataframe(equation_eval_df_AVERAGE_FULL, 'naiveAVERAGE_FULL')
-else:   
-    print("WARNING: AVERAGE_FULL baseline not available, skipping AVERAGE_FULL-specific analyses; check settings file and Re-Run Naive Forecaster")
-
-
-
-
-
-
-
-
-# =================================================================================================#
-#                                  Signals Analysis & OLS                                          #
-# =================================================================================================#
-
-def run_signals_analysis(df, model_name, naive_col, save_folder_graphs, save_folder_tables):
-    """
-    Run visualization, summary stats, and OLS regressions for the signals decomposition.
-    """
-    print(f"\n--- Running Signals Analysis for {model_name} ---")
-    
-    # 1. Visualization
-    # ----------------
-    # Plot components as bar time series (excluding error)
-    cols_to_plot = ['realized', naive_col, 'ifoCast_signal', 'judgemental_signal']
-    colors = ['black', 'gray', 'tab:blue', 'tab:orange']
-    
-    fig, axes = plt.subplots(len(cols_to_plot), 1, figsize=(12, 10), sharex=True)
-    if len(cols_to_plot) == 1: axes = [axes]
-
-    x_labels = _format_quarterly_index(df.index)
-    pos = np.arange(len(df))
-    
-    for ax, col, color in zip(axes, cols_to_plot, colors):
-        if col in df.columns:
-            ax.bar(pos, df[col], color=color, alpha=0.7)
-            ax.axhline(0, color='black', linewidth=0.5)
-            ax.set_ylabel(col)
-            ax.grid(axis='y', alpha=0.3)
-        
-    axes[-1].set_xticks(pos)
-    axes[-1].set_xticklabels(x_labels, rotation=45, ha='right')
-    fig.suptitle(f'Signals Decomposition - {model_name}', fontsize=14)
-    fig.tight_layout()
-    
-    plot_path = os.path.join(save_folder_graphs, f"Signals_Optimization_Plots_{model_name}.png")
-    fig.savefig(plot_path, dpi=180, bbox_inches='tight')
-    plt.close(fig)
-    print(f"Saved plots to {plot_path}")
-
-    # 2. Summary Statistics
-    # ---------------------
-    stats_df = df.describe()
-    stats_path = os.path.join(save_folder_tables, f"Signals_Stats_{model_name}.xlsx")
-    stats_df.to_excel(stats_path)
-    print(f"Saved stats to {stats_path}")
-
-    # 3. Covariance / Correlation
-    # ---------------------------
-    cov_cols = [c for c in ['realized', naive_col, 'ifoCast_signal', 'judgemental_signal', 'error'] if c in df.columns]
-    df_cov = df[cov_cols].dropna()
-
-    # Save covariance table
-    cov_matrix = df_cov.cov()
-    cov_path = os.path.join(save_folder_tables, f"Covariance_Matrix_{model_name}.xlsx")
-    cov_matrix.to_excel(cov_path)
-    print(f"Saved covariance matrix to {cov_path}")
-
-    # Save correlation table
-    corr_matrix = df_cov.corr()
-    corr_path = os.path.join(save_folder_tables, f"Correlation_Matrix_{model_name}.xlsx")
-    corr_matrix.to_excel(corr_path)
-    print(f"Saved correlation matrix to {corr_path}")
-
-    # Seaborn heatmap of covariance matrix (upper triangle only; show diagonal)
-    mask_cov = np.tril(np.ones_like(cov_matrix, dtype=bool), k=-1)
-    fig_cov, ax_cov = plt.subplots(figsize=(8, 6))
-    sns.heatmap(cov_matrix, mask=mask_cov, annot=True, fmt=".4f", cmap="coolwarm", center=0,
-                square=True, linewidths=0.5, ax=ax_cov)
-    ax_cov.set_title(f"Covariance Matrix – {model_name}", fontsize=13, fontweight="bold")
-    fig_cov.tight_layout()
-    cov_plot_path = os.path.join(save_folder_graphs, f"Covariance_Heatmap_{model_name}.png")
-    fig_cov.savefig(cov_plot_path, dpi=180, bbox_inches="tight")
-    plt.close(fig_cov)
-    print(f"Saved covariance heatmap to {cov_plot_path}")
-
-    # Seaborn heatmap of correlation matrix (upper triangle only; show diagonal)
-    mask_corr = np.tril(np.ones_like(corr_matrix, dtype=bool), k=-1)
-    fig_corr, ax_corr = plt.subplots(figsize=(8, 6))
-    sns.heatmap(corr_matrix, mask=mask_corr, annot=True, fmt=".3f", cmap="coolwarm", center=0,
-                vmin=-1, vmax=1, square=True, linewidths=0.5, ax=ax_corr)
-    ax_corr.set_title(f"Correlation Matrix – {model_name}", fontsize=13, fontweight="bold")
-    fig_corr.tight_layout()
-    corr_plot_path = os.path.join(save_folder_graphs, f"Correlation_Heatmap_{model_name}.png")
-    fig_corr.savefig(corr_plot_path, dpi=180, bbox_inches="tight")
-    plt.close(fig_corr)
-    print(f"Saved correlation heatmap to {corr_plot_path}")
-
-    # 4. OLS Regressions
-    # ------------------
-    results_list = []
-    
-    # Ensure temporary columns for Model 4 don't pollute the next run if we modify df in place
-    # Work on a copy OR clean up
-    df_ols = df.copy()
-
-    # Helper to run OLS and store results
-    def run_ols_and_store(y_col_name, x_cols, hypothesis_str, y_data=None, equation_label="", individual_hypotheses=None):
-        if y_data is None:
-            y = df_ols[y_col_name]
-        else:
-            y = y_data
-            
-        X = df_ols[x_cols]
-        
-        # Handle NA
-        combined = pd.concat([y, X], axis=1)
-        combined_clean = combined.dropna()
-        if combined_clean.empty:
-            print(f"  Warning: No valid data for {equation_label}")
-            return
-            
-        y_clean = combined_clean.iloc[:, 0]
-        X_clean = combined_clean.iloc[:, 1:]
-        
-        model = sm.OLS(y_clean, X_clean)
-        results = model.fit()
-        
-        # Joint Hypothesis Testing (F-test)
         try:
-            f_test = results.f_test(hypothesis_str)
-            f_val = f_test.fvalue.item() if hasattr(f_test.fvalue, "item") else f_test.fvalue
-            f_p = f_test.pvalue.item() if hasattr(f_test.pvalue, "item") else f_test.pvalue
-            reject = f_p < 0.05
+            plot_judgemental_derivations_or_net_improvement(
+                df=eval_df,
+                kind="derivation",
+                graph_folder_EDA=graph_folder_derivations,
+                header=f"Judgemental derivations vs {baseline_model_name} (h={h})",
+                filename_prefix="judgemental_derivations",
+                filename_suffix=f"h{h}",
+                show=False,
+            )
         except Exception as e:
-            f_val = np.nan
-            f_p = np.nan
-            reject = f"Error: {e}"
+            print(f"  Error plotting derivations for h={h}: {e}")
 
-        # Store per-regressor info
-        for term in x_cols:
-            # Individual hypothesis test (t-test)
-            # Default H0 is usually 1.0 for these signal models, or 0.0 for intercept/residuals
-            h0_val = 0.0
-            if individual_hypotheses and term in individual_hypotheses:
-                h0_val = individual_hypotheses[term]
+        try:
+            plot_judgemental_derivations_or_net_improvement(
+                df=eval_df,
+                kind="net_improvement",
+                graph_folder_EDA=graph_folder_net_improvement,
+                header=None,
+                filename_prefix="net_improvement",
+                filename_suffix=f"h{h}_t95p",
+                show=False,
+                y_axis_percentile=95.0,
+            )
+        except Exception as e:
+            print(f"  Error plotting net improvement for h={h}: {e}")
+
+        try:
+            plot_error_comparison(
+                df=eval_df,
+                error_col_jdg="error_realized_minus_judgemental",
+                error_col_benchmark=f"error_realized_minus_naive{baseline_model_name}",
+                benchmark_label=baseline_model_name,
+                graph_folder=graph_folder_errors,
+                filename_prefix="error_comparison",
+                filename_suffix=f"h{h}_t95p",
+                show=False,
+                y_axis_percentile=95.0,
+            )
+        except Exception as e:
+            print(f"  Error plotting error comparison for h={h}: {e}")
+
+        horizon_summary_df = pd.DataFrame(
+            [s for s in summary_stats_list if s.get("Horizon") == h]
+        )
+        if not horizon_summary_df.empty:
+            horizon_summary_path = os.path.join(table_folder_eda, f"Summary_Statistics_h{h}.xlsx")
+            horizon_summary_df.to_excel(horizon_summary_path, index=False)
+            horizon_summary_folder = os.path.join(graph_folder_derivations, f"h{h}_summary")
+            visualize_summary_statistics(horizon_summary_df, horizon_summary_folder)
+
+    if summary_stats_list:
+        summary_stats_df = pd.DataFrame(summary_stats_list)
+        summary_stats_path = os.path.join(table_folder_main, "Summary_Statistics_All_Horizons.xlsx")
+        summary_stats_df.to_excel(summary_stats_path, index=False)
+    
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                    MAIN EXECUTION BLOCK                                          #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+"""
+Main evaluation execution:
+
+1. For each baseline model (AR2, AVERAGE_1, AVERAGE_10, AVERAGE_FULL):
+   a. Run forecast evaluation pipeline
+   b. Generate model-specific results
+   
+2. Aggregate and compare results across baseline models
+"""
+
+print("\n" + "="*80)
+print("FULL GDP ANALYSIS")
+print("="*80)
+
+# Placeholder: Loop over baseline models
+for baseline_model in naive_target_models:
+    print(f"\n>>> Processing baseline model: {baseline_model}")
+    print(f"    Output folder: {model_output_folders.get(baseline_model, 'Not set')}")
+
+    if baseline_model in naive_forecasts_dict:
+        run_forecast_evaluation_pipeline(
+            judgemental_forecasts_dict=ifo_judgemental_forecasts,
+            naive_forecasts_dict=naive_forecasts_dict,
+            ifoCast_forecasts_dict=None,
+            realized_df=qoq_first_eval,
+            baseline_model_name=baseline_model,
+            output_folders={
+                'table_eda': os.path.join(model_output_folders[baseline_model], '0_EDA_Tables'),
+                'graph_eda': os.path.join(model_output_folders[baseline_model], '0_EDA_Graphs'),
+                'graph_derivations': os.path.join(model_output_folders[baseline_model], '1_Derivations_Graphs'),
+                'graph_errors': os.path.join(model_output_folders[baseline_model], '2_Errors_Graphs'),
+                'graph_net_improvement': os.path.join(model_output_folders[baseline_model], '3_Net_Improvement_Graphs'),
+                'table_main': os.path.join(model_output_folders[baseline_model], '4_Main_Analysis_Tables'),
+                'graph_main': os.path.join(model_output_folders[baseline_model], '5_Main_Analysis_Graphs'),
+            },
+            max_horizon=MAX_HORIZON,
+            evaluate_ifoCast=EVALUATE_IFOCAST,
+        )
+    else:
+        print(f"    WARNING: {baseline_model} not available in naive forecasts. Skipping.")
+
+
+# Run analysis on Components (if enabled)
+if evaluate_forecast_components and included_components:
+    print("\n" + "="*80)
+    print("COMPONENT ANALYSIS")
+    print("="*80)
+    
+    for component_name in included_components:
+        print(f"\n--- Processing Component: {component_name} ---\n")
+        
+        # Check if we have judgemental forecasts for this component
+        if component_name not in ifo_component_forecasts:
+            print(f"    WARNING: No judgemental forecasts for component {component_name}, skipping.")
+            continue
+        
+        jdg_comp_forecasts = ifo_component_forecasts[component_name]
+        component_naive_dict = naive_component_forecasts.get(component_name, {})
+        
+        # For each baseline model, run component evaluation
+        for baseline_model in naive_target_models:
+            # Use pattern matching to find the model (e.g., 'AR2' matches 'AR2_FULL_9')
+            pattern = re.compile(rf'^{re.escape(baseline_model)}(_|$)')
+            model_matches = [k for k in component_naive_dict if pattern.match(k)]
             
+            if not model_matches:
+                print(f"    Skipping {baseline_model} for component {component_name} - no data")
+                continue
+            
+            # Use the first matching model key
+            actual_model_key = model_matches[0]
+            print(f"  >>> Processing {baseline_model} for component {component_name} (using {actual_model_key})")
+            
+            # Get component-specific folders for this baseline model
+            comp_folders = setup_component_folder(component_name, baseline_model)
+            
+            # Run evaluation pipeline for this component and baseline model
             try:
-                t_test_res = results.t_test(f"{term} = {h0_val}")
-                t_p_val = t_test_res.pvalue.item() if hasattr(t_test_res.pvalue, "item") else t_test_res.pvalue
-            except:
-                t_p_val = np.nan
-
-            res_dict = {
-                "Model_Baseline": model_name,
-                "Equation": equation_label,
-                "Term": term,
-                "Coefficient": results.params[term],
-                "StdErr": results.bse[term],
-                "P-Value": results.pvalues[term],
-                "H0_Value": h0_val,
-                "Indiv_Test_P_Value": t_p_val,
-                "Joint_Test_Hypothesis": hypothesis_str,
-                "Joint_Test_F_Stat": f_val,
-                "Joint_Test_P_Value": f_p,
-                "Joint_Reject_5pct": reject
-            }
-            results_list.append(res_dict)
-
-    # Model 1 (realized on AR, statSignal, judgSignal) is not identigied
-    
-    if naive_col in df_ols.columns:
-        # Model 2: (realized - naive) ~ ifoCast_signal + judgemental_signal (No Intercept)
-        # H0: betas = 1
-        y_m2 = df_ols['realized'] - df_ols[naive_col]
-        cols_m2 = ['ifoCast_signal', 'judgemental_signal']
-        hyp_m2 = "ifoCast_signal = 1, judgemental_signal = 1"
-        indiv_hyp_m2 = {'ifoCast_signal': 1.0, 'judgemental_signal': 1.0}
-        run_ols_and_store(None, cols_m2, hyp_m2, y_data=y_m2, equation_label="2. (Realized - Naive) ~ Signals", individual_hypotheses=indiv_hyp_m2)
-
-        # Model 3: (realized - naive) ~ intercept + ifoCast_signal + judgemental_signal
-        # H0: intercept=0, betas = 1
-        # Ensure intercept column exists for the regression
-        df_ols['const'] = 1
-        y_m3 = df_ols['realized'] - df_ols[naive_col]
-        cols_m3 = ['const', 'ifoCast_signal', 'judgemental_signal']
-        hyp_m3 = "const = 0, ifoCast_signal = 1, judgemental_signal = 1"
-        indiv_hyp_m3 = {'const': 0.0, 'ifoCast_signal': 1.0, 'judgemental_signal': 1.0}
-        run_ols_and_store(None, cols_m3, hyp_m3, y_data=y_m3, equation_label="3. (Realized - Naive) ~ Intercept + Signals", individual_hypotheses=indiv_hyp_m3)
-
-        # Model 4: (realized - naive - ifoCast_signal) ~ judgemental_signal
-        # H0: beta = 1
-        y_m4 = df_ols['realized'] - df_ols[naive_col] - df_ols['ifoCast_signal']
-        cols_m4 = ['judgemental_signal']
-        hyp_m4 = "judgemental_signal = 1"
-        indiv_hyp_m4 = {'judgemental_signal': 1.0}
-        run_ols_and_store(None, cols_m4, hyp_m4, y_data=y_m4, equation_label="4. (Realized - Naive - ifoSignal) ~ JudgSignal", individual_hypotheses=indiv_hyp_m4)
-
-        # Model 5: (realized - naive - ifoCast_signal) ~ intercept + judgemental_signal
-        # H0: intercept=0, beta=1
-        y_m5 = y_m4  # Same LHS
-        cols_m5 = ['const', 'judgemental_signal']
-        hyp_m5 = "const = 0, judgemental_signal = 1"
-        indiv_hyp_m5 = {'const': 0.0, 'judgemental_signal': 1.0}
-        run_ols_and_store(None, cols_m5, hyp_m5, y_data=y_m5, equation_label="5. (Realized - Naive - ifoSignal) ~ Intercept + JudgSignal", individual_hypotheses=indiv_hyp_m5)
-
-        # Model 6: (realized - naive - ifoCast_signal) ~ intercept + judgemental_signal + judgemental_signal^2
-        # H0: intercept=0, beta=1, beta_sq=0
-        # Construct RHS with squared term and intercept
-        df_ols['judgemental_signal_sq'] = df_ols['judgemental_signal'] ** 2
-        cols_m6 = ['const', 'judgemental_signal', 'judgemental_signal_sq']
-        hyp_m6 = "const = 0, judgemental_signal = 1, judgemental_signal_sq = 0"
-        indiv_hyp_m6 = {'const': 0.0, 'judgemental_signal': 1.0, 'judgemental_signal_sq': 0.0}
-        run_ols_and_store(None, cols_m6, hyp_m6, y_data=y_m5, equation_label="6. Efficiency Test (with Intercept & Sq)", individual_hypotheses=indiv_hyp_m6)
-
-    return results_list
-
-# Collection of all results
-all_ols_results = []
-
-# List of potential models to analyze
-# Check if they exist in local scope
-potential_models = [
-    ("AR2", "naiveAR2"),
-    ("AVERAGE_1", "naiveAVERAGE_1"),
-    ("AVERAGE_10", "naiveAVERAGE_10"),
-    ("AVERAGE_FULL", "naiveAVERAGE_FULL")
-]
-
-for name, col in potential_models:
-    var_name = f"equation_eval_df_{name}"
-    if var_name in locals():
-        df_model = locals()[var_name]
-        # Run analysis
-        try:
-            res = run_signals_analysis(df_model, name, col, main_analysis_graphs_folder, main_analysis_tables_folder)
-            all_ols_results.extend(res)
-        except Exception as e:
-            print(f"Error running analysis for {name}: {e}")
-
-# Save OLS Results
-if all_ols_results:
-    ols_df = pd.DataFrame(all_ols_results)
-    ols_output_path = os.path.join(main_analysis_tables_folder, "Signals_OLS_Results.xlsx")
-    ols_df.to_excel(ols_output_path, index=False)
-    print(f"\nAll OLS results saved to {ols_output_path}")
+                run_forecast_evaluation_pipeline(
+                    judgemental_forecasts_dict=jdg_comp_forecasts,
+                    naive_forecasts_dict={baseline_model: component_naive_dict[actual_model_key]},
+                    ifoCast_forecasts_dict=None,
+                    realized_df=qoq_first_eval,
+                    baseline_model_name=baseline_model,
+                    output_folders={
+                        'table_eda': comp_folders['table_eda'],
+                        'graph_eda': comp_folders['graph_eda'],
+                        'graph_derivations': comp_folders['graph_derivations'],
+                        'graph_errors': comp_folders['graph_errors'],
+                        'graph_net_improvement': comp_folders['graph_net_improvement'],
+                        'table_main': comp_folders['table_main'],
+                        'graph_main': comp_folders['graph_main'],
+                    },
+                    max_horizon=MAX_HORIZON,
+                    evaluate_ifoCast=EVALUATE_IFOCAST,
+                )
+            except Exception as e:
+                print(f"    Error processing component {component_name} with baseline {baseline_model}: {e}")
 
 
-
-
-
-
-
-
-
-
-
+print("\n" + "="*80)
+print("FORECAST EVALUATION COMPLETE")
+print("="*80)
 
 
 # --------------------------------------------------------------------------------------------------
-print(f" \n ifo Judgemental Forecasting Analysis Module complete! \n",f"Find Result Graphs in {graph_folder} and \nResult Tables in {table_folder}\n")
+print(f" \n ifo Judgemental Forecasting Analysis Module (Horizons) Complete! \n")
+print(f"Output structured in: {base_output_folder}")
+print(f"  Main GDP Analysis in: {main_folder}")
+print(f"    - AR2")
+print(f"    - AVERAGE_1")
+print(f"    - AVERAGE_10")
+print(f"    - AVERAGE_FULL")
+if evaluate_forecast_components and included_components:
+    print(f"  Component Analysis in: {components_folder}")
+    for comp in included_components:
+        print(f"    - {comp}")
 # --------------------------------------------------------------------------------------------------
-
 
 
 

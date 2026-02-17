@@ -211,22 +211,13 @@ if settings.evaluate_forecast_components:
     # Path
     file_path_ifo_qoq_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_gdp_component_forecast')
 
-    # Load - manually parse component names from filenames
-    ifo_qoq_forecasts_components = {}
+    ifo_qoq_forecasts_components = load_ifo_component_forecasts(
+        file_path_ifo_qoq_components,
+        included_components=included_components,
+    )
 
-    if os.path.exists(file_path_ifo_qoq_components):
-        component_files = glob.glob(os.path.join(file_path_ifo_qoq_components, 'qoq_forecast_data*.xlsx'))
-        for file in component_files:
-            filename = os.path.basename(file)
-            # Extract component name from 'qoq_forecast_data_COMPONENT.xlsx'
-            comp_name = filename.replace('qoq_forecast_data_', '').replace('.xlsx', '')
-            
-            if comp_name in included_components:
-                ifo_qoq_forecasts_components[comp_name] = pd.read_excel(file, index_col=0)
-                print(f"  Loaded ifo forecasts for component: {comp_name}")
-
-            else: 
-                print(f"  Skipped ifo forecasts for component: {comp_name}; change settings.included_components to include this component in the evaluation.")
+    for comp_name in ifo_qoq_forecasts_components:
+        print(f"  Loaded ifo forecasts for component: {comp_name}")
 
 else:
     print("\nComponent forecast evaluation is turned off; to turn on, change settings.evaluate_forecast_components to True\n")
@@ -273,72 +264,14 @@ naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naiv
 
 file_path_component_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '3_QoQ_Component_Forecast_Tables')
 
-## Load component naive forecasts with structure: naive_qoq_forecasts_COMPONENT_MODEL.xlsx
-def load_component_naive_forecasts(
-    file_path_component_qoq: str, *, 
-    included_components=None,                          # default → global fallback
-    drop_ar2_components: list[str] | None = None,
-    pattern: str = "naive_qoq_forecasts_*.xlsx"
-) -> dict:
-
-    # Use global included_components if not explicitly passed
-    if included_components is None:
-        included_components = globals().get("included_components", None)
-
-    # Create filter object
-    drop_ar2_components = set(drop_ar2_components or [])
-
-    # Convert included_components to set for faster lookup (if provided)
-    included_components = set(included_components) if included_components is not None else None
-
-    # Define output
-    out: dict = {}
-
-
-    if os.path.exists(file_path_component_qoq):
-        component_files = glob.glob(os.path.join(file_path_component_qoq, pattern))
-
-        # Loop over all files in folder
-        for file in component_files:
-            filename = os.path.basename(file)
-
-            # Extract component and model from 'naive_qoq_forecasts_COMPONENT_MODEL.xlsx'
-            # e.g., 'naive_qoq_forecasts_CONSTR_AR2_50_9.xlsx' -> component='CONSTR', model='AR2_50_9'
-            # split only once because model names may contain underscores
-            parts = filename.replace('naive_qoq_forecasts_', '').replace('.xlsx', '').split('_', 1)
-            if len(parts) != 2:
-                continue
-
-            # Define dynamic naming objects
-            component, model = parts[0], parts[1]
-
-            # Apply filter: skip if component is in drop_ar2_components and model starts with "AR2"
-            if component in drop_ar2_components and model.startswith("AR2"):
-                print(f"  Skipped naive component forecast (drop AR2): {component} - {model}")
-                continue
-
-            # Apply include-filter if provided
-            if included_components is not None and component not in included_components:
-                print(f"  Skipped naive component forecast: {component}.")
-                continue
-            
-            # Ensure component container exists
-            if component not in out:
-                out[component] = {}
-
-            # Always read and assign the model
-            df = pd.read_excel(file, index_col=0)
-            out[component][model] = df
-
-            print(f"  Loaded naive component forecast: {component} - {model}")
-
-    return out
-
 
 ## Load component naive forecasts, drop exploding time series:
 if settings.evaluate_forecast_components:
-    component_naive_qoq_dfs_dict = load_component_naive_forecasts(file_path_component_qoq,
-        drop_ar2_components=["PRIVCON"])
+    component_naive_qoq_dfs_dict = load_component_naive_forecasts(
+        file_path_component_qoq,
+        included_components=included_components,
+        #drop_ar2_components=["PRIVCON"],
+    )
 
 
 

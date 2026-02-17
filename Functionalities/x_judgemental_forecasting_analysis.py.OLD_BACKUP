@@ -1,0 +1,511 @@
+﻿# --------------------------------------------------------------------------------------------------
+# ==================================================================================================
+# Title:        Judgemental Forecasting Analysis Module
+#
+# Author:       Jan Ole Westphal
+# Date:         2026-01
+#
+# Description:  Subprogram to run an econometric analysis on judgemental derivations in german
+#               macroeconomic forecasting with evaluation at multiple horizons (h=0 to h=6).
+# 
+#               Evaluates forecasts issued at different vintage dates against realized outcomes
+#               at horizons 0 through 6 quarters ahead.
+#
+#               Runs all components from Data Processing to Output Processing and Visualizations.         
+# ==================================================================================================
+# --------------------------------------------------------------------------------------------------
+
+
+
+""""
+Main Tasks:
+- Create measures of judgemental derivations at multiple horizons (h=0 to h=6):
+    - derivation from the ifoCAST (NOTE: ifoCAST evaluation currently toggled OFF)
+    - derivation from an AR2-benchmark
+    - derivation from average models
+
+- Create measures of net-improvement of derivations across horizons
+- Classify derivations by:
+    - direction of the shock
+    - direction of the adjustment
+    - net improvement success
+
+- Analyze judgment quality as a function of forecast horizon
+- Compare absolute vs relative accuracy across horizons
+
+VISUALIZATIONS:
+- Judgemental vs Benchmark error bars by horizon
+- Derivations and net improvements across horizons
+- Summary statistics by horizon
+"""
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                        Code begins here                                          #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+
+# ==================================================================================================
+#                                           SETUP
+# ==================================================================================================
+
+from __future__ import annotations
+
+# Import built-ins
+import importlib
+import subprocess
+import sys
+import os
+import glob
+import re
+from pathlib import Path
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
+
+from itertools import product
+from typing import Union, Dict, Optional, Mapping, Tuple, Dict
+
+
+# Import libraries
+import requests
+import pandas as pd
+from pandas.tseries.offsets import QuarterBegin
+from pandasgui import show  #uncomment this to allow for easier debugging
+
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.tsa.ar_model import AutoReg
+
+
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import matplotlib.cm as cm
+from matplotlib.patches import Patch
+
+import seaborn as sns
+
+# Set display options
+pd.set_option('display.max_columns', None)
+# sns.set_theme(style='whitegrid')
+
+
+
+
+
+# ==================================================================================================
+#                                IMPORT CORE CUSTOM FUNCTIONALITIES
+# ==================================================================================================
+
+# Ensure project root is in sys.path
+wd = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if wd not in sys.path:
+    sys.path.insert(0, wd)
+
+## Import helperfunctions
+from Functionalities.helpers.helperfunctions import *
+
+
+# --------------------------------------------------------------------------------------------------
+# Import Evaluation Functions
+# --------------------------------------------------------------------------------------------------
+
+from Functionalities.helpers.evalfunctions import *
+
+from Functionalities.helpers.judgemental_evalfunctions import (
+    add_error_columns,
+    _classify_derivations,
+    _infer_baseline_spec,
+    _generate_summary_statistics,
+    visualize_summary_statistics,
+    _format_quarterly_index,
+    _format_quarterly_index_with_horizon,
+    _apply_percentile_truncation,
+    plot_judgemental_derivations_or_net_improvement,
+    plot_error_comparison,
+    transform_eval_dataframe,
+    run_signals_analysis,
+)
+
+
+
+# ==================================================================================================
+# Import settings from the settings file
+# ==================================================================================================
+
+import ifo_forecast_evaluation_settings as settings
+
+# Define the model
+models = settings.models
+AR_orders = settings.AR_orders
+average_horizons = settings.average_horizons
+AR_horizons = settings.AR_horizons
+forecast_horizon = settings.forecast_horizon
+
+# Format the output
+resultfolder_name_n_forecast = settings.resultfolder_name_n_forecast   
+naming_convention = settings.naming_convention
+
+# Select timeframes
+horizon_limit_year = settings.horizon_limit_year
+horizon_limit_quarter = settings.horizon_limit_quarter   
+
+# Select whether to evaluate GVA predictions
+run_gva_evaluation = settings.run_gva_evaluation
+
+
+# ==================================================================================================
+#                                  CONFIGURATION VARIABLES
+# ==================================================================================================
+
+# TODO: Currently ifoCAST evaluation is disabled. Set to True to enable.
+# NOTE: When enabled, implementation must include conditional expectation estimator
+#       for horizon-h forecasts. Currently placeholder - requires conditional mean logic.
+EVALUATE_IFOCAST = False
+
+# For horizons, number of periods ahead to evaluate (0 = nowcast, up to 6)
+MAX_HORIZON = 6
+
+
+## Print Module header
+print("\nExecuting the Judgemental Forecasting Analysis Module (Multi-Horizon) ... \n")
+
+
+## Clear Result Folders
+#if settings.clear_result_folders:
+#    folder_clear(folder_path)
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                          LOAD IN DATA                                            #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+# -------------------------------------------------------------------------------------------------#
+# Load realized GDP series
+# -------------------------------------------------------------------------------------------------#
+eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
+qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
+
+## First Releases
+qoq_first_eval = pd.read_excel(qoq_path_first, index_col=0)
+qoq_first_eval = align_df_to_mid_quarters(qoq_first_eval)  # Align to mid-quarter dates
+#show(qoq_first_eval)
+
+
+# -------------------------------------------------------------------------------------------------#
+# Load ifo qoq forecasts (with horizons)
+# -------------------------------------------------------------------------------------------------#
+
+# NOTE: For forecasting with horizons, we need to structure data as follows:
+# For each forecast vintage date on the COLUMN, we extract 7 consecutive quarters
+# starting from the same quarter as the forecast date (h=0) through 6 quarters ahead (h=6).
+#
+# Example: If forecast issued on 2010Q1 (column), we extract:
+#   h=0: realized value for 2010Q1 (row matching column quarter)
+#   h=1: realized value for 2010Q2 (row below that)
+#   h=2: realized value for 2010Q3 (row 2 below)
+#   ... and so on up to h=6
+#
+# TODO: Implement horizon loading logic below once forecast data structure is finalized
+
+# Path to forecast files
+file_path_ifo_qoq = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_ifo_qoq_series',
+                                  'ifo_qoq_forecasts.xlsx' )
+
+# Load 
+ifo_qoq_forecasts = pd.read_excel(file_path_ifo_qoq, index_col=0)
+
+# TODO: Extract horizons h=0 to h=6 from ifo_qoq_forecasts
+# For each column (forecast date), match same-quarter row, then extract next 6 rows
+# Create dictionary: {h0_df, h1_df, ..., h6_df}
+ifo_judgemental_forecasts = {}  # Placeholder - to be populated by horizon extraction logic
+#show(ifo_judgemental_forecasts)
+
+
+# -------------------------------------------------------------------------------------------------#
+# Load ifoCAST forecasts (currently disabled)
+# -------------------------------------------------------------------------------------------------#
+
+# TODO: When EVALUATE_IFOCAST=True, implement conditional expectation estimator
+#       Current ifoCAST contains nowcasts only. For horizon-h forecasts, need:
+#       - Conditional mean of future realized values given current information
+#       - Multi-step ahead forecast structure
+#
+# if EVALUATE_IFOCAST:
+#     ifoCAST_forecasts_full_path = os.path.join(
+#         wd, '0_0_Data', '0_Forecast_Inputs', '2_ifoCAST', 'ifoCAST_forecasts_full.xlsx')
+#     ifoCAST_forecasts = pd.read_excel(ifoCAST_forecasts_full_path, index_col=0)
+#     ifoCAST_forecasts = align_df_to_mid_quarters(ifoCAST_forecasts)
+# else:
+#     print("INFO: ifoCAST forecasting evaluation is disabled (EVALUATE_IFOCAST=False)")
+#     ifoCAST_forecasts = None
+
+
+# -------------------------------------------------------------------------------------------------#
+# Load AR2 forecasts AND AVERAGE forecasts (with horizons)
+# -------------------------------------------------------------------------------------------------#
+
+# Paths to the folders containing the Excel files
+file_path_naive_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_YoY_Forecast_Vectors')
+
+# TODO: Load QoQ naive forecast Excel files with horizon structure
+# Current implementation loads from file system; adapt to extract horizons
+# naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naive_qoq_forecasts_')
+
+# Define target naive models
+naive_target_models = ['AR2', 'AVERAGE_1', 'AVERAGE_10', 'AVERAGE_FULL']
+naive_forecasts_dict = {}  # Placeholder - to be populated with horizon-structured data
+
+# TODO: Once data loading implemented, structure as:
+# naive_forecasts_dict[model_name][horizon] = forecast_dataframe
+
+
+# Ensure existence of naive forecasts
+if not naive_forecasts_dict:
+    print("WARNING: Naive forecast data not yet loaded. Implement horizon extraction logic above.")
+    # raise ValueError("No naive forecast models found. Cannot proceed with analysis.")
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                    OUTPUT FOLDER SETUP                                           #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+# Base output folder for forecasting analysis (differs from nowcasting)
+base_output_folder = os.path.join(wd, resultfolder_name_n_forecast, 
+                                   '5_Judgemental_Derivations_Analysis',
+                                   '2_Forecasting')
+
+os.makedirs(base_output_folder, exist_ok=True)
+
+# Create subfolders for each baseline model
+# Output structure: 5_Judgemental_Derivations_Analysis/2_Forecasting/{baseline_model}/
+model_output_folders = {}
+for model_name in naive_target_models:
+    model_folder = os.path.join(base_output_folder, model_name)
+    os.makedirs(model_folder, exist_ok=True)
+    model_output_folders[model_name] = model_folder
+
+    # Create subdirectories for EDA and main analysis
+    table_folder_EDA = os.path.join(model_folder, '0_EDA_Tables')
+    graph_folder_EDA = os.path.join(model_folder, '0_EDA_Graphs')
+    graph_folder_EDA_derivations = os.path.join(model_folder, '1_Derivations_Graphs')
+    graph_folder_EDA_errors = os.path.join(model_folder, '2_Errors_Graphs')
+    graph_folder_EDA_net_improvement = os.path.join(model_folder, '3_Net_Improvement_Graphs')
+    
+    main_analysis_tables_folder = os.path.join(model_folder, '4_Main_Analysis_Tables')
+    main_analysis_graphs_folder = os.path.join(model_folder, '5_Main_Analysis_Graphs')
+
+    for folder in [table_folder_EDA, graph_folder_EDA, graph_folder_EDA_derivations,
+                   graph_folder_EDA_errors, graph_folder_EDA_net_improvement,
+                   main_analysis_tables_folder, main_analysis_graphs_folder]:
+        os.makedirs(folder, exist_ok=True)
+
+
+print(f"Output folders created in: {base_output_folder}")
+print(f"  - AR2")
+print(f"  - AVERAGE_1")
+print(f"  - AVERAGE_10")
+print(f"  - AVERAGE_FULL")
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                               FORECAST EVALUATION PIPELINE                                      #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+
+def run_forecast_evaluation_pipeline(
+    judgemental_forecasts_dict: Dict[int, pd.DataFrame],
+    naive_forecasts_dict: Dict[str, Dict[int, pd.DataFrame]],
+    ifoCast_forecasts_dict: Optional[Dict[int, pd.DataFrame]],
+    realized_df: pd.DataFrame,
+    baseline_model_name: str,
+    output_folders: Dict[str, str],
+    max_horizon: int = 6,
+    evaluate_ifoCast: bool = False,
+    time_filter_start: str = '2000-01-01',
+    time_filter_end: str = '2100-01-01'
+) -> None:
+    """
+    Run evaluation pipeline for judgemental forecasts across multiple horizons.
+    
+    Parameters
+    ----------
+    judgemental_forecasts_dict : Dict[int, pd.DataFrame]
+        Dictionary mapping horizon h -> DataFrame of judgemental forecasts at h
+    naive_forecasts_dict : Dict[str, Dict[int, pd.DataFrame]]
+        Dictionary mapping model_name -> {horizon -> forecast DataFrame}
+    ifoCast_forecasts_dict : Optional[Dict[int, pd.DataFrame]]
+        Dictionary mapping horizon -> ifoCAST DataFrame, or None if not evaluating
+    realized_df : pd.DataFrame
+        DataFrame of realized values
+    baseline_model_name : str
+        Name of baseline model (e.g., "AR2", "AVERAGE_10")
+    output_folders : Dict[str, str]
+        Dictionary with keys: 'table_eda', 'graph_eda', 'graph_derivations', 'graph_errors',
+                             'graph_net_improvement', 'table_main', 'graph_main'
+    max_horizon : int
+        Maximum horizon to evaluate (default 6)
+    evaluate_ifoCast : bool
+        Whether to include ifoCAST in evaluation
+    time_filter_start : str
+        Start date for filtering (format: YYYY-MM-DD)
+    time_filter_end : str
+        End date for filtering (format: YYYY-MM-DD)
+    
+    Returns
+    -------
+    None
+        Results are saved to output folders
+    
+    Notes
+    -----
+    TODO: Implementation of full horizon-based evaluation pipeline.
+    Current outline:
+    1. For each horizon h (0 to max_horizon):
+       a. Extract judgemental, naive, and (optionally) ifoCAST forecasts at horizon h
+       b. Merge with realized values at corresponding dates
+       c. Compute error measures
+       d. Compute derivation measures
+       e. Compute net improvement measures
+       f. Classify derivations
+    2. Generate horizon-specific summary statistics
+    3. Generate horizon-aware visualizations
+    4. Aggregate results across horizons for cross-horizon comparison
+    """
+    
+    print(f"\nRunning forecast evaluation pipeline for baseline model: {baseline_model_name}")
+    print(f"Evaluating horizons: h=0 to h={max_horizon}")
+    
+    # TODO: Implement horizon-by-horizon evaluation logic
+    # 1. Initialize containers for results by horizon
+    # 2. Loop over horizons h=0 to max_horizon:
+    #    - Merge forecast and realized data at horizon h
+    #    - Apply error and derivation calculations
+    #    - Filter time periods
+    #    - Generate statistics and visualizations
+    # 3. Save horizon-specific tables and graphs
+    # 4. Aggregate results across horizons
+    # 5. Generate cross-horizon comparison analyses
+    
+    print(f"  WARNING: Full evaluation pipeline not yet implemented for forecasting horizons.")
+    print(f"  This is a placeholder for horizon-based evaluation logic.")
+    
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                    HORIZON LOADING HELPERS                                      #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+# TODO: Implement helper functions for horizon extraction:
+#
+# def extract_horizons_from_forecast_matrix(forecast_df: pd.DataFrame, 
+#                                            realized_df: pd.DataFrame,
+#                                            max_horizon: int = 6) -> Dict[int, pd.DataFrame]:
+#     """
+#     Extract horizon-specific forecasts from forecast matrix.
+#     
+#     For each column (forecast vintage date) in forecast_df, extract same-quarter row
+#     and next {max_horizon} rows, creating a separate DataFrame for each horizon.
+#     
+#     Example:
+#       Forecast issued Q1 (column) -> extract Q1 row (h=0), Q2 row (h=1), ..., Q3 next year (h=6)
+#     """
+#     horizons_dict = {}
+#     # Implementation here
+#     return horizons_dict
+#
+# def merge_forecast_and_realized_at_horizon(forecast_df: pd.DataFrame,
+#                                             realized_df: pd.DataFrame,
+#                                             horizon: int) -> pd.DataFrame:
+#     """Merge forecast at horizon h with realized values occurring at h quarters ahead."""
+#     # Implementation here
+#     pass
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                    MAIN EXECUTION BLOCK                                          #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+"""
+Main evaluation execution:
+
+1. For each baseline model (AR2, AVERAGE_1, AVERAGE_10, AVERAGE_FULL):
+   a. Run forecast evaluation pipeline
+   b. Generate model-specific results
+   
+2. Aggregate and compare results across baseline models
+"""
+
+print("\n" + "="*80)
+print("STARTING FORECAST EVALUATION FOR ALL BASELINE MODELS")
+print("="*80)
+
+# Placeholder: Loop over baseline models
+for baseline_model in naive_target_models:
+    print(f"\n>>> Processing baseline model: {baseline_model}")
+    print(f"    Output folder: {model_output_folders.get(baseline_model, 'Not set')}")
+    
+    # TODO: Uncomment when data loading and pipeline implementation is complete
+    # if baseline_model in naive_forecasts_dict:
+    #     run_forecast_evaluation_pipeline(
+    #         judgemental_forecasts_dict=ifo_judgemental_forecasts,
+    #         naive_forecasts_dict=naive_forecasts_dict,
+    #         ifoCast_forecasts_dict=ifoCAST_forecasts if EVALUATE_IFOCAST else None,
+    #         realized_df=qoq_first_eval,
+    #         baseline_model_name=baseline_model,
+    #         output_folders={
+    #             'table_eda': os.path.join(model_output_folders[baseline_model], '0_EDA_Tables'),
+    #             'graph_eda': os.path.join(model_output_folders[baseline_model], '0_EDA_Graphs'),
+    #             'graph_derivations': os.path.join(model_output_folders[baseline_model], '1_Derivations_Graphs'),
+    #             'graph_errors': os.path.join(model_output_folders[baseline_model], '2_Errors_Graphs'),
+    #             'graph_net_improvement': os.path.join(model_output_folders[baseline_model], '3_Net_Improvement_Graphs'),
+    #             'table_main': os.path.join(model_output_folders[baseline_model], '4_Main_Analysis_Tables'),
+    #             'graph_main': os.path.join(model_output_folders[baseline_model], '5_Main_Analysis_Graphs'),
+    #         },
+    #         max_horizon=MAX_HORIZON,
+    #         evaluate_ifoCast=EVALUATE_IFOCAST,
+    #     )
+    # else:
+    #     print(f"    WARNING: {baseline_model} not available in naive forecasts. Skipping.")
+
+
+print("\n" + "="*80)
+print("FORECAST EVALUATION COMPLETE")
+print("="*80)
+
+
+# --------------------------------------------------------------------------------------------------
+print(f" \n ifo Judgemental Forecasting Analysis Module (Horizons) Complete! \n")
+print(f"Output structured in: {base_output_folder}")
+print(f"  Organize by baseline model (AR2, AVERAGE_1, AVERAGE_10, AVERAGE_FULL) \n")
+# --------------------------------------------------------------------------------------------------
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                        End of Code                                               #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#

@@ -381,6 +381,87 @@ def load_excels_to_dict(folder_path, strip_string=None, filter=None):
     return dfs
 
 
+# ==================================================================================================
+# Component forecast loading helpers
+# ==================================================================================================
+
+def load_ifo_component_forecasts(
+    folder_path: str,
+    *,
+    included_components: Optional[Iterable[str]] = None,
+    pattern: str = "qoq_forecast_data*.xlsx",
+) -> Dict[str, pd.DataFrame]:
+    """
+    Load ifo component forecast matrices from a folder.
+
+    Expected filenames: qoq_forecast_data_COMPONENT.xlsx
+    Returns a dict mapping component -> DataFrame.
+    """
+    out: Dict[str, pd.DataFrame] = {}
+
+    included_set = set(included_components) if included_components is not None else None
+
+    if not os.path.exists(folder_path):
+        return out
+
+    component_files = glob.glob(os.path.join(folder_path, pattern))
+    for file in component_files:
+        filename = os.path.basename(file)
+        comp_name = filename.replace("qoq_forecast_data_", "").replace(".xlsx", "")
+
+        if included_set is not None and comp_name not in included_set:
+            continue
+
+        out[comp_name] = pd.read_excel(file, index_col=0)
+
+    return out
+
+
+def load_component_naive_forecasts(
+    file_path_component_qoq: str,
+    *,
+    included_components: Optional[Iterable[str]] = None,
+    drop_ar2_components: Optional[Iterable[str]] = None,
+    pattern: str = "naive_qoq_forecasts_*.xlsx",
+) -> Dict[str, Dict[str, pd.DataFrame]]:
+    """
+    Load naive component forecast matrices with structure:
+    naive_qoq_forecasts_COMPONENT_MODEL.xlsx
+
+    Returns a dict mapping component -> {model -> DataFrame}.
+    """
+    out: Dict[str, Dict[str, pd.DataFrame]] = {}
+
+    drop_ar2_set = set(drop_ar2_components or [])
+    included_set = set(included_components) if included_components is not None else None
+
+    if not os.path.exists(file_path_component_qoq):
+        return out
+
+    component_files = glob.glob(os.path.join(file_path_component_qoq, pattern))
+
+    for file in component_files:
+        filename = os.path.basename(file)
+        parts = filename.replace("naive_qoq_forecasts_", "").replace(".xlsx", "").split("_", 1)
+        if len(parts) != 2:
+            continue
+
+        component, model = parts[0], parts[1]
+
+        if component in drop_ar2_set and model.startswith("AR2"):
+            continue
+
+        if included_set is not None and component not in included_set:
+            continue
+
+        if component not in out:
+            out[component] = {}
+
+        out[component][model] = pd.read_excel(file, index_col=0)
+
+    return out
+
+
 
 
 

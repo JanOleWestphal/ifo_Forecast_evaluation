@@ -22,13 +22,13 @@ To do this, select the series to be evaluated below and run scripts 1,2,3,4
 """
 
 # Deicde whether to run the main evaluation of ifo's GDP forecasts against rt data; set to False to only run the component evaluation
-evaluate_quarterly_gdp_forecasts = True # True or False
+evaluate_quarterly_gdp_forecasts = False # True or False
 
 # Select whether to run the component evaluation; set to False to only run the GDP evaluation
 evaluate_forecast_components = True # True or False
 
 # Select which components to include, List of strings
-included_components = ['EQUIPMENT']
+included_components = ['PRIVCON']
 
 # ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'EQUIPMENT','OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
 
