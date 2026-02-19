@@ -2,5 +2,5 @@
 # --- IGNORE ---
 # This .gitignore file is used to exclude specific files and folders from being tracked by Git
 
-C:\Users\janol\OneDrive\Desktop\ifo\Konjunkturprognose Evaluierung\ifo_forecast_evaluation\5_Judgemental_Forecasts_Derivations_Analysis
-C:\Users\janol\OneDrive\Desktop\ifo\Konjunkturprognose Evaluierung\ifo_forecast_evaluation\5_Judgemental_Nowcasts_Derivations_Analysis
+5_Judgemental_Forecasts_Derivations_Analysis/
+5_Judgemental_Nowcasts_Derivations_Analysis/

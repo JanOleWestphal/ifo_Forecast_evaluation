@@ -154,7 +154,7 @@ except Exception:
 
 ## Result Folder Paths
 table_folder = os.path.join(wd,  '1_Result_Tables_GDP')
-graph_folder = os.path.join(wd,  '2_Result_Graphs_GDP')
+graph_folder = os.path.join(wd,  '1_Result_Graphs_GDP')
 
 component_result_folder = os.path.join(wd, '1_Quarterly_Evaluation')
 
