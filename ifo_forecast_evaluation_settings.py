@@ -16,19 +16,8 @@
 #                          SYSTEM SETTINGS: Which Time Series should be evaluated?
 # ==================================================================================================
 
-"""
-The original project was to evaluate the ifo GDP forecasts, but its component's may also be evaluated.
-To do this, select the series to be evaluated below and run scripts 1,2,3,4
-"""
-
-# Deicde whether to run the main evaluation of ifo's GDP forecasts against rt data; set to False to only run the component evaluation
-evaluate_quarterly_gdp_forecasts = False # True or False
-
-# Select whether to run the component evaluation; set to False to only run the GDP evaluation
-evaluate_forecast_components = True # True or False
-
 # Select which components to include, List of strings
-included_components = ['PRIVCON']
+included_components = ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'EQUIPMENT','OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
 
 # ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'EQUIPMENT','OPA', 'INVINV', 'DOMUSE', 'TRDBAL', 'EXPORT', 'IMPORT']
 
@@ -48,11 +37,9 @@ included_components = ['PRIVCON']
 """
 
 
-# Decide whether to run filtered timeframe analysis for components (e.g., 2010-Q1 to 2017-Q1) as 
-# well as outlier filtering; Set to False for faster execution
-run_component_filter = False # True or False
 
-
+## Decide whether to get the old GDP eval output as well (interesting if result for latest releases are required)
+get_old_gdp_evals = False  # True or False; only runs if run_quarterly_evaluation = True; only applies to GDP, not components
 
 
 
@@ -75,8 +62,8 @@ match_ifo_naive_dates = True  # True or False; RECOMMENDATION:True
 #                                     OUTLIER SETTINGS
 # --------------------------------------------------------------------------------------------------
 
-# Drop Outliers: Decide to drop forecast errors exceeding a certain threshhold
-drop_outliers = True  # True or False
+# Decide whether to run outlier and time frame filtering
+run_component_filter = True # True or False
 
 # Set the Thresshold which drops errors exceeding sd_threshold * sd(col)
 sd_threshold = 2.5  # float, e.g. 0.05 or 5; runs if drop_outliers = True
@@ -142,16 +129,16 @@ run_data_processing = True  # True or False
 run_naive_forecaster = True  # True or False
 
 # 4.: Decide whether to run the quarterly evaluation output module
-run_quarterly_evaluation = True  # True or False
+run_quarterly_evaluation = False  # True or False
 
 # 5.: Decide whether to run the ifoCAST evaluation module
-run_ifoCAST_evaluation = True  # True or False
+run_ifoCAST_evaluation = False  # True or False
 
 # 6.: Decide whether to run the ifoCAST long-term evaluation module
-run_ifoCAST_long_term_evaluation = True  # True or False
+run_ifoCAST_long_term_evaluation = False  # True or False
 
 # 7. Decide whether to run the forecat enhancement module
-run_forecast_enhancement_module = True  # True or False, requieres data from module 6
+run_forecast_enhancement_module = False  # True or False, requieres data from module 6
 
 # 8. Run Judgemental Nowcasting Analysis Module
 run_judgemental_nowcasting_analysis = True  # True or False
@@ -200,11 +187,6 @@ horizon_limit_quarter = 1            # 1,2,3 or 4; set as integer
 
 
 
-
-
-
-
-
 # ==================================================================================================
 #                                   NAIVE FORECAST SETTINGS
 # ==================================================================================================
@@ -228,6 +210,9 @@ Note:
 -> this parameter does not conduct a degree of freedom correction, i.e. there are AR_horizon - AR_order 
    free observations available.
 """
+
+# For AR model: estimates might diverge, set an upper limit of what is allowed (in qoq percentage points)
+AR_divergence_max = 50 # int, e.g. 50 for 50 percentage points; runs if 'AR' in models
 
 # For AR model: set the minimum number of observations required to estimate the AR model; int, should be more than AR_order
 min_AR_observations = 20

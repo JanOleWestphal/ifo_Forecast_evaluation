@@ -359,8 +359,15 @@ def load_excels_to_dict(folder_path, strip_string=None, filter=None):
 
         ## OPTIONAL: filter files by string in filename
         filename = os.path.basename(file)
-        # Skip if filename does not match filter
-        if isinstance(filter, str) and filter not in filename:
+        # Keep file if ANY filter substring matches filename
+        if isinstance(filter, str):
+            filter_terms = [filter]
+        elif isinstance(filter, (list, tuple, set)):
+            filter_terms = [item for item in filter if isinstance(item, str) and item]
+        else:
+            filter_terms = None
+
+        if filter_terms is not None and not any(term in filename for term in filter_terms):
             continue
 
 

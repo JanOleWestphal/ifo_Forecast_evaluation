@@ -31,6 +31,20 @@ Functions:
 -> Get latest release and revision evaluation data
 """
 
+"""
+BB Data Tables vs ifo Forecast component data:
+Bruttoinlandsprodukt			
+  Private Konsumausgaben			    BA100
+  Konsumausgaben des Staates			BA200
+  Bauten			                    CF1
+  Ausrüstungen			                CE1-CA010
+  Sonstige Anlagen			            CI1-CA010
+  Vorratsinvestitionenb			        CJ1
+  Inländische Verwendung			    Summe der oberen (nicht konstruierbar)
+  Außenbeitrag			                Summe der unteren (nicht konstruierbar)
+  Exporte			                    CX1
+  Importe			                    CM1
+"""
 
 
 print(" \n Data Processing started ... \n")
@@ -129,8 +143,8 @@ def _safe_to_excel(df, path, index=True):
 # --------------------------------------------------------------------------------------------------
 
 ## GDP
-output_dir_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_GDP_series')
-os.makedirs(output_dir_gdp, exist_ok=True)
+output_dir_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_series')
+os.makedirs(output_dir_components, exist_ok=True)
 
 ## GVA
 output_dir_gva = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_GVA_series')
@@ -145,6 +159,8 @@ os.makedirs(ifo_qoq_output_dir, exist_ok=True)
 # Component-level data
 # --------------------------------------------------------------------------------------------------
 
+"""
+
 ## Component output directory
 output_dir_ts_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_component_series')
 os.makedirs(output_dir_ts_components, exist_ok=True)
@@ -157,7 +173,7 @@ os.makedirs(output_dir_eval_components, exist_ok=True)
 component_forecast_output_dir = os.path.join(wd, '0_0_Data', '2_Processed_Data', '3_gdp_component_forecast')
 os.makedirs(component_forecast_output_dir, exist_ok=True)
 
-
+"""
 
 
 
@@ -252,14 +268,16 @@ def get_yoy(df):
 
 
 # ==================================================================================================
-#                                    Load Real-Time data
+#                                   Helper: Load Real-Time data
 # ==================================================================================================
 
+# Define folder structure for rt_data
+component_rt_foldername = "1_Component_Data"
 
-def process_realtime_data(rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GDP_raw.csv', 
+def process_realtime_data(rt_foldername=component_rt_foldername, rt_filename='Bundesbank_GDP_raw.csv', 
                           api_link='https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AG1.CA010.A.I?format=csv&lang=de',
                           data_name='GDP', 
-                          output_dir_df=output_dir_gdp):
+                          output_dir_df=output_dir_components):
     """
     Load real-time GDP and GVA data from Bundesbank API or local file.
     Process and return the cleaned DataFrame.
@@ -269,8 +287,9 @@ def process_realtime_data(rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GD
     # Import Data via Bundesbank API or locally
     # --------------------------------------------------------------------------------------------------
 
-    # Output filename "1_GDP_Data"
+    # Output filename "1_Component_Data"
     rt_filepath = os.path.join( wd, "0_0_Data", rt_foldername, rt_filename)
+    os.makedirs(os.path.dirname(rt_filepath), exist_ok=True)
 
 
     # Get file
@@ -331,7 +350,7 @@ def process_realtime_data(rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GD
     # Create yearly growth rates or changes: df_yoy (Year over Year)
     # --------------------------------------------------------------------------------------------------
 
-    df_yoy_rt = get_yoy(df_qoq_rt)
+    #df_yoy_rt = get_yoy(df_qoq_rt)
 
     # show(df_yoy_rt)
 
@@ -342,14 +361,14 @@ def process_realtime_data(rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GD
     # --------------------------------------------------------------------------------------------------
 
     # Define file paths
-    df_path_rt = os.path.join(output_dir_df, f'absolute_rt_{data_name}_data.xlsx')
-    df_qoq_path_rt = os.path.join(output_dir_df, f'qoq_rt_{data_name}_data.xlsx')
-    df_yoy_path_rt = os.path.join(output_dir_df, f'yoy_rt_{data_name}_data.xlsx')
+    df_path_rt = os.path.join(output_dir_df, f'absolute_rt_data_{data_name}.xlsx')
+    df_qoq_path_rt = os.path.join(output_dir_df, f'qoq_rt_data_{data_name}.xlsx')
+    #df_yoy_path_rt = os.path.join(output_dir_df, f'yoy_rt_{data_name}_data.xlsx')
 
     # Save files
     df_rt.to_excel(df_path_rt, index=True)      
     df_qoq_rt.to_excel(df_qoq_path_rt, index=True)
-    df_yoy_rt.to_excel(df_yoy_path_rt, index=True)
+    #df_yoy_rt.to_excel(df_yoy_path_rt, index=True)
 
 
 
@@ -359,7 +378,7 @@ def process_realtime_data(rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GD
     # Return raw, quarterly and yearly Real-Time Data and the filepath
     # --------------------------------------------------------------------------------------------------
 
-    return df_rt, df_qoq_rt, df_yoy_rt
+    return df_rt, df_qoq_rt #, df_yoy_rt
 
 
 
@@ -405,7 +424,7 @@ def build_first_release_series(df_input):
 
 
 
-def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combined, output_dir_df, data_name):
+def build_store_evaluation_timeseries(df_combined, df_qoq_combined, output_dir_df, data_name, df_yoy_combined=None):
 
     # --------------------------------------------------------------------------------------------------
     # First Release Time Series
@@ -414,7 +433,7 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     # Call this first_release on absolute, qoq and yoy
     first_release_df = build_first_release_series(df_combined)
     first_release_qoq_df = build_first_release_series(df_qoq_combined)
-    first_release_yoy_df = build_first_release_series(df_yoy_combined)
+    #first_release_yoy_df = build_first_release_series(df_yoy_combined)
 
 
 
@@ -425,12 +444,12 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     # Latest release: take the last (most recent) column from each DataFrame, keep its index and values
     latest_release_df = df_combined.iloc[:, -1].to_frame(name='value')
     latest_release_qoq_df = df_qoq_combined.iloc[:, -1].to_frame(name='value')
-    latest_release_yoy_df = df_yoy_combined.iloc[:, -1].to_frame(name='value')
+    #latest_release_yoy_df = df_yoy_combined.iloc[:, -1].to_frame(name='value')
 
     # Truncate to only rows present in the corresponding first_release_dfs by index
     latest_release_df = latest_release_df.loc[first_release_df.index]
     latest_release_qoq_df = latest_release_qoq_df.loc[first_release_qoq_df.index]
-    latest_release_yoy_df = latest_release_yoy_df.loc[first_release_yoy_df.index]
+    #latest_release_yoy_df = latest_release_yoy_df.loc[first_release_yoy_df.index]
 
 
 
@@ -447,8 +466,8 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     revision_qoq_df = first_release_qoq_df['value'] - latest_release_qoq_df['value']
     revision_qoq_df = revision_qoq_df.to_frame(name='revision')
 
-    revision_yoy_df = first_release_yoy_df['value'] - latest_release_yoy_df['value']
-    revision_yoy_df = revision_yoy_df.to_frame(name='revision')
+    #revision_yoy_df = first_release_yoy_df['value'] - latest_release_yoy_df['value']
+    #revision_yoy_df = revision_yoy_df.to_frame(name='revision')
 
 
 
@@ -460,7 +479,7 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     # =================================================================================================#
 
     """
-    Only for GDP, as backward looking GVA is not relevant at this point
+    Only for GDP and components, as backward looking GVA is not relevant at this point
     """
 
 
@@ -468,22 +487,21 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     if data_name == 'GDP':
 
         # Ensure directory exists
-        output_dir_df = os.path.join(wd, '0_0_Data', f'2_Processed_Data', f'1_combined_{data_name}_series')
-        os.makedirs(output_dir_df, exist_ok=True)
+        output_dir_df = output_dir_components
 
         # --------------------------------------------------------------------------------------------------
         # Combined DataSet
         # --------------------------------------------------------------------------------------------------
 
         # Define file paths
-        df_path_comb = os.path.join(output_dir_df, f'absolute_combined_{data_name}.xlsx')
-        df_qoq_path_comb = os.path.join(output_dir_df, f'qoq_combined_{data_name}_data.xlsx')
-        df_yoy_path_comb = os.path.join(output_dir_df, f'yoy_combined_{data_name}_data.xlsx')
+        df_path_comb = os.path.join(output_dir_df, f'absolute_rt_{data_name}.xlsx')
+        df_qoq_path_comb = os.path.join(output_dir_df, f'qoq_rt_data_{data_name}.xlsx')
+        #df_yoy_path_comb = os.path.join(output_dir_df, f'yoy_combined_{data_name}_data.xlsx')
 
         # Save files
         df_combined.to_excel(df_path_comb, index=True)      
         df_qoq_combined.to_excel(df_qoq_path_comb, index=True)
-        df_yoy_combined.to_excel(df_yoy_path_comb, index=True)
+        #df_yoy_combined.to_excel(df_yoy_path_comb, index=True)
 
 
 
@@ -493,11 +511,11 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
     # ==================================================================================================
 
     # Ensure directory exists
-    output_dir_ts = os.path.join(wd, '0_0_Data', f'2_Processed_Data', f'2_{data_name}_Evaluation_series')
-    output_dir_ts_2 = os.path.join(wd, '0_1_Output_Data', f'1_{data_name}_Evaluation_series')
+    output_dir_ts = os.path.join(wd, '0_0_Data', f'2_Processed_Data', f'2_evaluation_series')
+    #output_dir_ts_2 = os.path.join(wd, '0_1_Output_Data', f'1_{data_name}_Evaluation_series')
 
     os.makedirs(output_dir_ts, exist_ok=True)
-    os.makedirs(output_dir_ts_2, exist_ok=True)
+    #os.makedirs(output_dir_ts_2, exist_ok=True)
 
     # --------------------------------------------------------------------------------------------------
     # First Release
@@ -505,16 +523,17 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
 
     # Save these to two locations:
 
-    for output_dir_ts in [output_dir_ts, output_dir_ts_2]:
+    for output_dir_ts in [output_dir_ts]: #, output_dir_ts_2
+
         # Define file paths
         first_release_path = os.path.join(output_dir_ts, f'first_release_absolute_{data_name}.xlsx')
         first_release_qoq_path = os.path.join(output_dir_ts, f'first_release_qoq_{data_name}.xlsx')
-        first_release_yoy_path = os.path.join(output_dir_ts, f'first_release_yoy_{data_name}.xlsx')
+        #first_release_yoy_path = os.path.join(output_dir_ts, f'first_release_yoy_{data_name}.xlsx')
 
         # Save first release files
         first_release_df.to_excel(first_release_path, index=True)
         first_release_qoq_df.to_excel(first_release_qoq_path, index=True)
-        first_release_yoy_df.to_excel(first_release_yoy_path, index=True)
+        #first_release_yoy_df.to_excel(first_release_yoy_path, index=True)
 
 
         # ---------------------------------------------------------------------------------------------
@@ -524,12 +543,12 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
         # Define file paths
         latest_release_path = os.path.join(output_dir_ts, f'latest_release_absolute_{data_name}.xlsx')
         latest_release_qoq_path = os.path.join(output_dir_ts, f'latest_release_qoq_{data_name}.xlsx')
-        latest_release_yoy_path = os.path.join(output_dir_ts, f'latest_release_yoy_{data_name}.xlsx')
+        #latest_release_yoy_path = os.path.join(output_dir_ts, f'latest_release_yoy_{data_name}.xlsx')
 
         # Save latest release files
         latest_release_df.to_excel(latest_release_path, index=True)
         latest_release_qoq_df.to_excel(latest_release_qoq_path, index=True)
-        latest_release_yoy_df.to_excel(latest_release_yoy_path, index=True)
+        #latest_release_yoy_df.to_excel(latest_release_yoy_path, index=True)
 
 
         # ---------------------------------------------------------------------------------------------
@@ -539,12 +558,12 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
         # Define file paths
         revision_path = os.path.join(output_dir_ts, f'revision_absolute_{data_name}.xlsx')
         revision_qoq_path = os.path.join(output_dir_ts, f'revision_qoq_{data_name}.xlsx')
-        revision_yoy_path = os.path.join(output_dir_ts, f'revision_yoy_{data_name}.xlsx')
+        #revision_yoy_path = os.path.join(output_dir_ts, f'revision_yoy_{data_name}.xlsx')
 
         # Save revision files
         revision_df.to_excel(revision_path, index=True)
         revision_qoq_df.to_excel(revision_qoq_path, index=True)
-        revision_yoy_df.to_excel(revision_yoy_path, index=True)
+        #revision_yoy_df.to_excel(revision_yoy_path, index=True)
 
 
 
@@ -572,13 +591,13 @@ def build_store_evaluation_timeseries(df_combined, df_qoq_combined, df_yoy_combi
 #                                    Process BB Real-Time Data
 # ==================================================================================================
 
-gdp_rt, gdp_qoq_rt, gdp_yoy_rt = process_realtime_data(
+gdp_rt, gdp_qoq_rt = process_realtime_data(
                           rt_foldername="1_GDP_Data", rt_filename='Bundesbank_GDP_raw.csv', 
                           api_link='https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AG1.CA010.A.I?format=csv&lang=de',
                           data_name='GDP', 
-                          output_dir_df=output_dir_gdp)
+                          output_dir_df=output_dir_components)
 
-
+#, gdp_yoy_rt
 
 
 
@@ -591,7 +610,7 @@ gdp_rt, gdp_qoq_rt, gdp_yoy_rt = process_realtime_data(
 # Import
 # -------------------------------------------------------------------------------------------------#
 
-gdp_filepath = os.path.join(wd, "0_0_Data", "1_GDP_Data")
+gdp_filepath = os.path.join(wd, "0_0_Data", "0_GDP_Data_Inputs")
 
 # Filenames
 filename_95_05 = 'GDP_1995-2005_release.xlsx'
@@ -784,7 +803,7 @@ if settings.extend_rt_data_backwards:
 # ==================================================================================================
 
 gdp_qoq_combined = get_qoq(gdp_combined)
-gdp_yoy_combined = get_yoy(gdp_qoq_combined)
+#gdp_yoy_combined = get_yoy(gdp_qoq_combined)
 
 #show(gdp_qoq_combined)
 
@@ -796,9 +815,111 @@ gdp_yoy_combined = get_yoy(gdp_qoq_combined)
 # ==================================================================================================
 
 build_store_evaluation_timeseries(df_combined=gdp_combined, 
-                                  df_qoq_combined=gdp_qoq_combined, 
-                                  df_yoy_combined=gdp_yoy_combined, 
-                                  output_dir_df=output_dir_gdp, data_name='GDP')
+                                  df_qoq_combined=gdp_qoq_combined,  
+                                  output_dir_df=output_dir_components, data_name='GDP')
+
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------------------------------#
+# =================================================================================================#
+#                                 PROCESS COMPONENT RT-DATA                                        #
+# =================================================================================================#
+# -------------------------------------------------------------------------------------------------#
+
+## Get the evaluation pipeline
+def process_component_rt_data(rt_foldername_inp, rt_filename_inp, api_link_inp, 
+                              data_name_inp, output_dir_df_inp):
+
+    # Process the real-time data, download
+    gdp_rt, gdp_qoq_rt = process_realtime_data(
+                            rt_foldername=rt_foldername_inp, rt_filename=rt_filename_inp, 
+                            api_link=api_link_inp,
+                            data_name=data_name_inp, 
+                            output_dir_df=output_dir_df_inp)
+
+    # Get output
+    build_store_evaluation_timeseries(df_combined=gdp_rt, 
+                                    df_qoq_combined=gdp_qoq_rt,  
+                                    output_dir_df=output_dir_df_inp, data_name=data_name_inp)
+
+
+
+# ================================================================================================
+# Component real-time processing input dictionary
+# (structured such that it replicates the original GDP call via process_component_rt_data)
+# ================================================================================================
+
+RT_COMPONENT_INPUTS = {
+    "PUBCON": {
+        "rt_foldername_inp": component_rt_foldername,
+        "rt_filename_inp": "Bundesbank_PUBCON_raw.csv",
+        "api_link_inp": "https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.CA1.BA100.A.I?format=csv&lang=de",
+        "data_name_inp": "PUBCON",
+        "output_dir_df_inp": output_dir_components,
+    },
+    "PRIVCON": {
+        "rt_foldername_inp": component_rt_foldername,
+        "rt_filename_inp": "Bundesbank_PRIVCON_raw.csv",
+        "api_link_inp": "https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.CA1.BA200.A.I?format=csv&lang=de",
+        "data_name_inp": "PRIVCON",
+        "output_dir_df_inp": output_dir_components,
+    },
+    "CONSTR": {
+        "rt_foldername_inp": component_rt_foldername,
+        "rt_filename_inp": "Bundesbank_CONSTR_raw.csv",
+        "api_link_inp": "https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.CF1.CA010.A.I?format=csv&lang=de",
+        "data_name_inp": "CONSTR",
+        "output_dir_df_inp": output_dir_components,
+    },
+    "EQUIPMENT": {
+        "rt_foldername_inp": component_rt_foldername,
+        "rt_filename_inp": "Bundesbank_EQUIPMENT_raw.csv",
+        "api_link_inp": "https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.CE1.CA010.A.I?format=csv&lang=de",
+        "data_name_inp": "EQUIPMENT",
+        "output_dir_df_inp": output_dir_components,
+    },
+    "OPA": {
+        "rt_foldername_inp": component_rt_foldername,
+        "rt_filename_inp": "Bundesbank_OPA_raw.csv",
+        "api_link_inp": "https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.CI1.CA010.A.I?format=csv&lang=de",
+        "data_name_inp": "OPA",
+        "output_dir_df_inp": output_dir_components,
+    },
+    "INVINV": {
+        "rt_foldername_inp": component_rt_foldername,
+        "rt_filename_inp": "Bundesbank_INVINV_raw.csv",
+        "api_link_inp": "https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.CI1.CA010.A.I?format=csv&lang=de",
+        "data_name_inp": "INVINV",
+        "output_dir_df_inp": output_dir_components,
+    },
+    "EXPORT": {
+        "rt_foldername_inp": component_rt_foldername,
+        "rt_filename_inp": "Bundesbank_EXPORT_raw.csv",
+        "api_link_inp": "https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.CX1.CA010.A.I?format=csv&lang=de",
+        "data_name_inp": "EXPORT",
+        "output_dir_df_inp": output_dir_components,
+    },
+    "IMPORT": {
+        "rt_foldername_inp": component_rt_foldername,
+        "rt_filename_inp": "Bundesbank_IMPORT_raw.csv",
+        "api_link_inp": "https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.CM1.CA010.A.I?format=csv&lang=de",
+        "data_name_inp": "IMPORT",
+        "output_dir_df_inp": output_dir_components,
+    },
+}
+
+
+## Process each component's real-time data using the defined function and input dictionary
+for comp, kwargs in RT_COMPONENT_INPUTS.items():
+    process_component_rt_data(**kwargs)
+
+
+
 
 
 
@@ -825,13 +946,13 @@ if settings.run_gva_evaluation:
     #                                    Process BB Real-Time Data
     # ==================================================================================================
 
-    gva_rt, gva_qoq_rt, gva_yoy_rt= process_realtime_data(
+    gva_rt, gva_qoq_rt= process_realtime_data(
                             rt_foldername="1_GVA_Data", rt_filename='Bundesbank_GVA_raw.csv', 
                             api_link='https://api.statistiken.bundesbank.de/rest/download/BBKRT/Q.DE.Y.A.AU1.CA010.A.I?format=csv&lang=de',
                             data_name='GVA', 
                             output_dir_df=output_dir_gva)
 
-    
+    #, gva_yoy_rt
 
 
     # ==================================================================================================
@@ -840,7 +961,7 @@ if settings.run_gva_evaluation:
 
     build_store_evaluation_timeseries(df_combined=gva_rt, 
                                     df_qoq_combined=gva_qoq_rt, 
-                                    df_yoy_combined=gva_yoy_rt, 
+                                    #df_yoy_combined=gva_yoy_rt, 
                                     output_dir_df=output_dir_gva, data_name='GVA')
 
 
@@ -1169,7 +1290,8 @@ def process_ifo_component_realtime(df_raw_component):
 xls = pd.ExcelFile(ifo_components_path)
 
 for sheet in xls.sheet_names:
-    # Load each sheet
+
+    print(f"Processing sheet: {sheet} ... \n")
     # First two rows are meta, row 3 is header (publication dates), col1 is target date
     df_raw_component = pd.read_excel(
         ifo_components_path,
@@ -1181,7 +1303,22 @@ for sheet in xls.sheet_names:
     # Process to get real-time data, forecast series, and first release evaluation
     df_rt, df_forecast, first_release_eval_df = process_ifo_component_realtime(df_raw_component.copy())
 
+    # Save forecast QoQ and YoY data
+    safe_sheet_name = _safe_sheet_filename(sheet)
+    out_path_qoq_forecast = os.path.join(ifo_qoq_output_dir, f"qoq_forecast_data_{safe_sheet_name}.xlsx")
+    #out_path_yoy_forecast = os.path.join(component_forecast_output_dir, f"yoy_forecast_data_{safe_sheet_name}.xlsx")
+
+    _safe_to_excel(df_forecast, out_path_qoq_forecast, index=True)
+    #_safe_to_excel(df_yoy_forecast, out_path_yoy_forecast, index=True)
+
+
+    ## Only load sheets for which real-time BB data is unavailable, skip the rest:
+    if sheet in ['GDP', 'PRIVCON', 'PUBCON', 'CONSTR', 'EQUIPMENT','OPA', 'INVINV', 'EXPORT', 'IMPORT']:
+        #print(f"Skipping sheet: {sheet} ... \n")
+        continue
+
     # Get YoY from QoQ real-time data
+    """
     try:
         df_yoy_rt = get_yoy(df_rt)
     except Exception:
@@ -1192,44 +1329,44 @@ for sheet in xls.sheet_names:
         df_yoy_forecast = get_yoy(df_forecast)
     except Exception:
         df_yoy_forecast = pd.DataFrame()
+    """
 
     # Save real-time QoQ and YoY data
-    safe_sheet_name = _safe_sheet_filename(sheet)
-    out_path_qoq_rt = os.path.join(output_dir_ts_components, f"qoq_rt_data_{safe_sheet_name}.xlsx")
-    out_path_yoy_rt = os.path.join(output_dir_ts_components, f"yoy_rt_data_{safe_sheet_name}.xlsx")
+
+    out_path_qoq_rt = os.path.join(output_dir_components, f"qoq_rt_data_{safe_sheet_name}.xlsx")
+    #out_path_yoy_rt = os.path.join(output_dir_ts_components, f"yoy_rt_data_{safe_sheet_name}.xlsx")
 
     _safe_to_excel(df_rt, out_path_qoq_rt, index=True)
-    _safe_to_excel(df_yoy_rt, out_path_yoy_rt, index=True)
+    #_safe_to_excel(df_yoy_rt, out_path_yoy_rt, index=True)
 
-    # Save forecast QoQ and YoY data
-    out_path_qoq_forecast = os.path.join(component_forecast_output_dir, f"qoq_forecast_data_{safe_sheet_name}.xlsx")
-    out_path_yoy_forecast = os.path.join(component_forecast_output_dir, f"yoy_forecast_data_{safe_sheet_name}.xlsx")
 
-    _safe_to_excel(df_forecast, out_path_qoq_forecast, index=True)
-    _safe_to_excel(df_yoy_forecast, out_path_yoy_forecast, index=True)
+    # Save evaluation QoQ table (first release) to the same structure as API outputs
+    output_dir_ts = os.path.join(wd, '0_0_Data', '2_Processed_Data', f'2_evaluation_series')
+    #output_dir_ts_2 = os.path.join(wd, '0_1_Output_Data', f'1_{safe_sheet_name}_Evaluation_series')
+    os.makedirs(output_dir_ts, exist_ok=True)
+    #os.makedirs(output_dir_ts_2, exist_ok=True)
 
-    # Save evaluation QoQ table (first release)
-    os.makedirs(output_dir_eval_components, exist_ok=True)
-    out_eval_qoq = os.path.join(output_dir_eval_components, f"first_release_qoq_{safe_sheet_name}.xlsx")
-    _safe_to_excel(first_release_eval_df, out_eval_qoq, index=True)
+    for output_dir_ts in [output_dir_ts]: #, output_dir_ts_2
+        out_eval_qoq = os.path.join(output_dir_ts, f"first_release_qoq_{safe_sheet_name}.xlsx")
+        _safe_to_excel(first_release_eval_df, out_eval_qoq, index=True)
 
     # Build YoY evaluation series from the QoQ evaluation table
+    """
     try:
         first_release_eval_yoy_df = get_yoy(first_release_eval_df)
     except Exception:
         first_release_eval_yoy_df = pd.DataFrame()
 
-    out_eval_yoy = os.path.join(output_dir_eval_components, f"first_release_yoy_{safe_sheet_name}.xlsx")
-    _safe_to_excel(first_release_eval_yoy_df, out_eval_yoy, index=True)
-
-
-
+    for output_dir_ts in [output_dir_ts, output_dir_ts_2]:
+        out_eval_yoy = os.path.join(output_dir_ts, f"first_release_yoy_{safe_sheet_name}.xlsx")
+        _safe_to_excel(first_release_eval_yoy_df, out_eval_yoy, index=True)
+    """
 
 
 
 
 # --------------------------------------------------------------------------------------------------
-print(f" \n Data Processing complete, results are in Subfolders {output_dir_gdp} and {output_dir_gva} of working directory {wd} \n")
+print(f" \n Data Processing complete, results are in Subfolders {output_dir_components} and {output_dir_gva} of working directory {wd} \n")
 # --------------------------------------------------------------------------------------------------
 
 

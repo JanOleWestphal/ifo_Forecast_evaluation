@@ -161,7 +161,7 @@ for model in models:
 # --------------------------------------------------------------------------------------------------
 
 ## Define the result_subfolder path under wd\1_Result_Tables\1_Naive_Forecaster
-base_result_folder = os.path.join(wd, '1_Result_Tables', '1_Naive_Forecaster_Outputs')
+base_result_folder = os.path.join(wd, '1_Quarterly_Evaluation', '1_Naive_Forecaster_Outputs')
 os.makedirs(base_result_folder, exist_ok=True)
 
 ## Clear
@@ -193,55 +193,32 @@ else:
 
 
 
+
 # --------------------------------------------------------------------------------------------------
-# Data Outputs - GDP
+# Data Outputs 
 # --------------------------------------------------------------------------------------------------
 
 ## Parent Folder
 base_path = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data')
 folder_path = os.path.join(base_path, result_subfolder)
 
-## Define Resultfolder path
-file_path_dt_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '0_Combined_QoQ_Forecasts')
-file_path_dt_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '0_Combined_YoY_Forecasts')
-
-file_path_forecasts_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_QoQ_Forecast_Tables')
-file_path_forecasts_qoq_2 = os.path.join(wd, '0_1_Output_Data', '3_QoQ_Forecast_Tables')
-
-file_path_forecasts_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_YoY_Forecast_Vectors')
-file_path_forecasts_yoy_2 = os.path.join(wd, '0_1_Output_Data', '2_YoY_Forecast_Vectors')
-
-# Create if needed
-for folder in [base_path, folder_path, 
-               file_path_dt_qoq, file_path_dt_yoy,
-               file_path_forecasts_qoq, file_path_forecasts_qoq_2,
-               file_path_forecasts_yoy, file_path_forecasts_yoy_2]:
-    
-    os.makedirs(folder, exist_ok=True)
-
-
-
-
-
-
-
-# --------------------------------------------------------------------------------------------------
-# Data Outputs - COMPONENTS
-# --------------------------------------------------------------------------------------------------
-
-# Combined forecast and observed data
-file_path_dt_components_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_Combined_QoQ_Component_Forecasts')
-os.makedirs(file_path_dt_components_qoq, exist_ok=True)
-
-file_path_dt_components_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_Combined_YoY_Component_Forecasts')
-os.makedirs(file_path_dt_components_yoy, exist_ok=True)
+os.makedirs(base_path, exist_ok=True)
+os.makedirs(folder_path, exist_ok=True)
 
 # Forecasts
-file_path_forecasts_components_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '3_QoQ_Component_Forecast_Tables')
+file_path_forecasts_components_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_QoQ_Forecast_Tables')
 os.makedirs(file_path_forecasts_components_qoq, exist_ok=True)
 
-file_path_forecasts_components_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '3_YoY_Component_Forecast_Vectors')
+file_path_forecasts_components_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_YoY_Forecast_Vectors')
 os.makedirs(file_path_forecasts_components_yoy, exist_ok=True)
+
+# Combined forecast and observed data
+file_path_dt_components_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_QoQ_Forecasts_Combined_rt')
+os.makedirs(file_path_dt_components_qoq, exist_ok=True)
+
+file_path_dt_components_yoy = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '2_YoY_Forecasts_Combined_rt')
+os.makedirs(file_path_dt_components_yoy, exist_ok=True)
+
 
 
 # --------------------------------------------------------------------------------------------------
@@ -251,10 +228,10 @@ os.makedirs(file_path_forecasts_components_yoy, exist_ok=True)
 ## Clear
 if settings.clear_result_folders:
 
-    for folder in [folder_path, 
-                   file_path_dt_qoq, file_path_dt_yoy,
-                   file_path_forecasts_qoq, file_path_forecasts_qoq_2, 
-                   file_path_forecasts_yoy, file_path_forecasts_yoy_2, 
+    for folder in [ #folder_path, 
+                   #file_path_dt_qoq, file_path_dt_yoy,
+                   #file_path_forecasts_qoq, 
+                   #file_path_forecasts_yoy, 
                    file_path_dt_components_qoq, file_path_dt_components_yoy,
                    file_path_forecasts_components_qoq, file_path_forecasts_components_yoy]:
         
@@ -281,6 +258,7 @@ if settings.clear_result_folders:
 # =================================================================================================#
 # -------------------------------------------------------------------------------------------------#
 
+"""
 # ==================================================================================================
 # LOAD PROCESSED RT-GDP DATA 
 # ==================================================================================================
@@ -304,8 +282,7 @@ df_qoq_gdp = align_df_to_mid_quarters(df_qoq_gdp)
 # Drop completely empty rows
 df_qoq_gdp = df_qoq_gdp.dropna(how='all')
 #show(df_qoq_gdp)  # uncomment for debugging
-
-
+"""
 
 
 # ==================================================================================================
@@ -313,48 +290,48 @@ df_qoq_gdp = df_qoq_gdp.dropna(how='all')
 # ==================================================================================================
 
 # Define Directory
-input_dir_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_component_series')
-
-if settings.evaluate_forecast_components:
-    qoq_dfs_components = {}
-
-    for fname in os.listdir(input_dir_components):
-        # only load QoQ files
-        if not (fname.lower().endswith(".xlsx") and fname.startswith("qoq")):
-            continue
-
-        # expected filename format: qoq_rt_<TOKEN>_data.xlsx
-        base = os.path.splitext(fname)[0]
-        parts = base.split("_")
-        if len(parts) < 3:
-            continue
-
-        token = parts[-1]  # last substring, e.g. CONSTR
-        path = os.path.join(input_dir_components, fname)
-
-        # load entire workbook (all sheets) into one DataFrame
-        # if there is only one sheet, take it directly
-        xls = pd.ExcelFile(path)
-        if len(xls.sheet_names) == 1:
-            df = pd.read_excel(path, sheet_name=xls.sheet_names[0])
-        else:
-            # concatenate sheets vertically, preserving sheet info
-            df = pd.concat(
-                {sheet: pd.read_excel(path, sheet_name=sheet) for sheet in xls.sheet_names},
-                names=["sheet", "row"],
-            )
+input_dir_components = os.path.join(wd, '0_0_Data', '2_Processed_Data', '1_rt_series')
 
 
-        # Correct index
-        df.set_index(df.columns[0], inplace=True)
-        # Convert quarter strings (e.g., '1970Q1') back to datetime if they're still strings
-        if df.index.dtype == 'object':  # Only convert if index is string type
-            df.index = pd.PeriodIndex(df.index, freq='Q').to_timestamp()
+qoq_dfs_components = {}
 
-        # Store
-        qoq_dfs_components[token] = df
+for fname in os.listdir(input_dir_components):
+    # only load QoQ files
+    if not (fname.lower().endswith(".xlsx") and fname.startswith("qoq")):
+        continue
 
-    #show(qoq_dfs_components['CONSTR'])  # uncomment for debugging
+    # expected filename format: qoq_rt_data_<TOKEN>.xlsx
+    base = os.path.splitext(fname)[0]
+    parts = base.split("_")
+    if len(parts) < 3:
+        continue
+
+    token = parts[-1]  # last substring, e.g. CONSTR
+    path = os.path.join(input_dir_components, fname)
+
+    # load entire workbook (all sheets) into one DataFrame
+    # if there is only one sheet, take it directly
+    xls = pd.ExcelFile(path)
+    if len(xls.sheet_names) == 1:
+        df = pd.read_excel(path, sheet_name=xls.sheet_names[0])
+    else:
+        # concatenate sheets vertically, preserving sheet info
+        df = pd.concat(
+            {sheet: pd.read_excel(path, sheet_name=sheet) for sheet in xls.sheet_names},
+            names=["sheet", "row"],
+        )
+
+
+    # Correct index
+    df.set_index(df.columns[0], inplace=True)
+    # Convert quarter strings (e.g., '1970Q1') back to datetime if they're still strings
+    if df.index.dtype == 'object':  # Only convert if index is string type
+        df.index = pd.PeriodIndex(df.index, freq='Q').to_timestamp()
+
+    # Store
+    qoq_dfs_components[token] = df
+
+#show(qoq_dfs_components['CONSTR'])  # uncomment for debugging
 
 
 
@@ -456,8 +433,10 @@ def select_col(df_qoq, col, horizon):
         - For horizons exceeding available data, returns all available observations
     """
 
-    # Select the non-null part of each column: series
-    series = df_qoq[col].dropna()
+    # Select valid numeric values only and remove non-finite observations
+    # (some component inputs may contain +/-inf due to earlier transformations)
+    series = pd.to_numeric(df_qoq[col], errors='coerce')
+    series = series.replace([np.inf, -np.inf], np.nan).dropna()
 
     # Select the model scope
     if horizon == 'FULL' or len(series) < horizon:
@@ -560,6 +539,7 @@ def AR_diagnostics(col, results, AR_order):
 
 
 
+
 # -------------------------------------------------------------------------------------------------#
 # =================================================================================================#
 #                   MAIN EXECUTION FUNCTIONS - Output Generation and Processing                    #
@@ -571,9 +551,8 @@ def AR_diagnostics(col, results, AR_order):
 # ==================================================================================================
 
 def retrieve_qoq_predictions(qoq_forecast_df, model, average_horizon=None, AR_order=None, AR_horizon=None, forecast_horizon=None,
-                             file_path_forecasts_qoq=file_path_dt_qoq, 
-                             file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
-                             gdp_mode=True, component_name: str = ""):
+                             file_path_forecasts_qoq=file_path_dt_components_qoq, 
+                            component_name: str = ""):
     """
     I: Set the index equal to colnames, shift every col such that the col name matches the row name on
     the first observation
@@ -639,32 +618,23 @@ def retrieve_qoq_predictions(qoq_forecast_df, model, average_horizon=None, AR_or
     ## Store the Results
     ## ---------------------------------------------------------------------------
 
-    if gdp_mode:
-        paths = [file_path_forecasts_qoq, file_path_forecasts_qoq_2]
-    else:
-        paths = [file_path_forecasts_qoq]
+    # Model-based dynamic naming
+    if model in ['AVERAGE', 'GLIDING_AVERAGE']:
+        qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
 
-    # Store to two different locations
-    for path in paths:
+    elif model == 'AR':
+        qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
 
-        # Model-based dynamic naming
-        if model in ['AVERAGE', 'GLIDING_AVERAGE']:
-            qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
-
-        elif model == 'AR':
-            qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
-
-        # Store to path
-        naive_qoq_forecasts.to_excel(os.path.join(path, qoq_forecast_name))
+    # Store to path
+    naive_qoq_forecasts.to_excel(os.path.join(file_path_forecasts_qoq, qoq_forecast_name))
 
 
     return naive_qoq_forecasts
 
 
 def retrieve_qoq_predictions_components(qoq_forecast_df, model, average_horizon=None, AR_order=None, AR_horizon=None, forecast_horizon=None,
-                                        file_path_forecasts_qoq=file_path_dt_qoq, 
-                                        file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
-                                        gdp_mode=True, component_name: str = ""):
+                                        file_path_forecasts_qoq=file_path_dt_components_qoq, 
+                                        component_name: str = ""):
     """
     Component-specific version of retrieve_qoq_predictions.
     Fixes truncation bug at Q2-2023 by removing rows created before earliest publication.
@@ -678,6 +648,15 @@ def retrieve_qoq_predictions_components(qoq_forecast_df, model, average_horizon=
     naive_qoq_forecasts = qoq_forecast_df.copy()
     #show(naive_qoq_forecasts)  # uncomment for debugging
     naive_qoq_forecasts = naive_qoq_forecasts.dropna(axis= 1, how='all') 
+
+    # If all forecast columns are empty, store and return an empty result
+    if naive_qoq_forecasts.shape[1] == 0:
+        if model in ['AVERAGE', 'GLIDING_AVERAGE']:
+            qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}_{average_horizon}_{forecast_horizon-1}.xlsx'
+        elif model == 'AR':
+            qoq_forecast_name = f'naive_qoq_forecasts_{component_name}{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}.xlsx'
+        naive_qoq_forecasts.to_excel(os.path.join(file_path_forecasts_qoq, qoq_forecast_name))
+        return naive_qoq_forecasts
 
     # Convert columns to datetime if they aren't already
     columns_datetime = pd.to_datetime(naive_qoq_forecasts.columns)
@@ -829,7 +808,7 @@ def join_forecaster_output(df_qoq, qoq_forecast_df):
 # --------------------------------------------------------------------------------------------------
 
 def save_dt_indexed_results(df_combined_qoq, df_combined_yoy, model, average_horizon=None, AR_order=None, AR_horizon=None,
-                            file_path_dt_qoq= file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, component_name: str = ""):
+                            file_path_dt_qoq= file_path_dt_components_qoq, file_path_dt_yoy=file_path_dt_components_yoy, component_name: str = ""):
 
 
     # If clause for dynamic naming of results
@@ -866,9 +845,7 @@ def get_yoy_forecast_series(
     average_horizon=None, AR_order=None, AR_horizon=None,
     summer=False,
     winter=False,
-    gdp_mode=True,
-    file_path_forecasts_yoy=file_path_forecasts_yoy,
-    file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+    file_path_forecasts_yoy=file_path_forecasts_components_yoy,
     component_name: str = "",
 ):
     df_combined_yoy = df_combined_yoy.copy()
@@ -921,79 +898,12 @@ def get_yoy_forecast_series(
         filename_yoy_forecast_series = (
             f"forecast_series_{component_name}yoy_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx"
         )
-
+        
+    # Store to excel
     yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy, filename_yoy_forecast_series), index=True)
-    if gdp_mode:
-        yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy_2, filename_yoy_forecast_series), index=True)
 
     return yoy_forecast_series
 
-
-"""
-def get_yoy_forecast_series(df_combined_yoy, summer = False, winter = False, gdp_mode=True,
-                            file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
-                            component_name: str = ""):
-
-    df_combined_yoy = df_combined_yoy.copy()
-
-    # Rescale Index to yearly values
-    df_combined_yoy.index = pd.to_datetime(df_combined_yoy.index).year
-    #show(df_combined_yoy)
-
-    ## Loop through release dates to extract forecasts
-    records = []
-    for col in df_combined_yoy.columns:
-        date = pd.to_datetime(col)
-        yr = date.year
-
-        # base record
-        rec = {"date_of_forecast": date}
-
-        y1 = yr + 1
-        rec.update({
-            "y_0":        yr,
-            "y_0_forecast":      df_combined_yoy.at[yr, col],
-            "y_1":        y1,
-            "y_1_forecast":      df_combined_yoy.at[y1, col]
-        })
-
-        records.append(rec)
-
-    # Build DataFrame, set forecast date as index
-    yoy_forecast_series = pd.DataFrame.from_records(records).set_index("date_of_forecast")
-
-    ## Filter if needed
-    # Ensure index is datetime
-    yoy_forecast_series.index = pd.to_datetime(yoy_forecast_series.index)
-
-    # Filter based on seasonal parameters
-    if summer:
-        # Filter for Q2 (April, May, June - months 4, 5, 6)
-        yoy_forecast_series = yoy_forecast_series[yoy_forecast_series.index.month.isin([4, 5, 6])]
-    elif winter:
-        # Filter for Q4 (October, November, December - months 10, 11, 12)
-        yoy_forecast_series = yoy_forecast_series[yoy_forecast_series.index.month.isin([10, 11, 12])]
-
-    # Dynamic Naming with seasonal suffix
-    seasonal_suffix = "_full"
-    if summer:
-        seasonal_suffix = "_summer"
-    elif winter:
-        seasonal_suffix = "_winter"
-
-    if model in ['AVERAGE', 'GLIDING_AVERAGE']:
-        filename_yoy_forecast_series = f'forecast_series_{component_name}yoy_{model}_{average_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx'
-    elif model == 'AR':
-        filename_yoy_forecast_series = f'forecast_series_{component_name}yoy_{model}{AR_order}_{AR_horizon}_{forecast_horizon-1}{seasonal_suffix}.xlsx'
-
-    # Store to two locations
-    yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy, filename_yoy_forecast_series), index=True)
-
-    if gdp_mode:
-        yoy_forecast_series.to_excel(os.path.join(file_path_forecasts_yoy_2, filename_yoy_forecast_series), index=True)
-
-    return yoy_forecast_series
-"""
 
 
 
@@ -1137,33 +1047,28 @@ def save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df
 # -------------------------------------------------------------------------------------------------#
 
 def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df,  model, average_horizon, AR_horizon, AR_order,
-                             file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
-                             file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
-                             file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+                             file_path_dt_qoq=file_path_dt_components_qoq, file_path_dt_yoy=file_path_dt_components_yoy,
+                             file_path_forecasts_qoq=file_path_forecasts_components_qoq,
+                             file_path_forecasts_yoy=file_path_forecasts_components_yoy, 
                              AR_summary=None,
-                             gdp_mode=True, component_name: str = ""):
+                            component_name: str = ""):
 
             ## Process
             # For components, filter df_qoq to exclude unrelated early data that would be brought back by join_forecaster_output
             df_qoq_for_join = df_qoq.copy()
-            if not gdp_mode:
-                # Filter df_qoq to start from earliest forecast column
-                earliest_forecast_col = pd.to_datetime(qoq_forecast_df.columns).min()
-                df_qoq_for_join = df_qoq_for_join[df_qoq_for_join.index >= earliest_forecast_col]
+
+            # Filter df_qoq to start from earliest forecast column
+            earliest_forecast_col = pd.to_datetime(qoq_forecast_df.columns).min()
+            df_qoq_for_join = df_qoq_for_join[df_qoq_for_join.index >= earliest_forecast_col]
             
             df_combined_qoq, df_combined_yoy = join_forecaster_output(df_qoq_for_join, qoq_forecast_df)
 
             ## Store Output
 
             # qoq Time Series - use component-specific function for better robustness
-            if gdp_mode:
-                retrieve_qoq_predictions(qoq_forecast_df, model=model, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, forecast_horizon=forecast_horizon,
-                                         file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
-                                         gdp_mode=gdp_mode, component_name=component_name)
-            else:
-                retrieve_qoq_predictions_components(qoq_forecast_df, model=model, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, forecast_horizon=forecast_horizon,
-                                                    file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2, 
-                                                    gdp_mode=gdp_mode, component_name=component_name)
+            retrieve_qoq_predictions_components(qoq_forecast_df, model=model, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, forecast_horizon=forecast_horizon,
+                                                file_path_forecasts_qoq=file_path_forecasts_qoq,  
+                                                component_name=component_name)
 
 
             # DateTime indexed results
@@ -1173,15 +1078,15 @@ def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df,  m
 
             # YoY Forecasts
             yoy_forecast_series = get_yoy_forecast_series(df_combined_yoy, 
-                                                          average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, model=model, gdp_mode=gdp_mode, component_name=component_name)
+                                                          average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, model=model, component_name=component_name)
             yoy_forecast_series_summer = get_yoy_forecast_series(df_combined_yoy, 
-                                                                 summer=True, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, model=model, gdp_mode=gdp_mode, component_name=component_name)
+                                                                 summer=True, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, model=model, component_name=component_name)
             yoy_forecast_series_winter = get_yoy_forecast_series(df_combined_yoy, 
-                                                                 winter=True, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, model=model, gdp_mode=gdp_mode, component_name=component_name)
+                                                                 winter=True, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, model=model,  component_name=component_name)
 
             # Reformated combined time series
-            if gdp_mode:
-                save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, model, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, AR_summary=AR_summary)
+            #if gdp_mode:
+            #    save_renamed_results(df_combined_qoq, df_combined_yoy, qoq_forecast_index_df, model, average_horizon=average_horizon, AR_order=AR_order, AR_horizon=AR_horizon, AR_summary=AR_summary)
 
 
 
@@ -1205,10 +1110,10 @@ def process_and_save_results(df_qoq, qoq_forecast_df,  qoq_forecast_index_df,  m
 
 def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR_horizons, 
                       average_horizons=average_horizons, forecast_horizon=forecast_horizon,
-                        file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, 
-                        file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
-                        file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
-                        gdp_mode = True, component_name: str = ""):
+                        file_path_dt_qoq=file_path_dt_components_qoq, file_path_dt_yoy=file_path_dt_components_yoy, 
+                        file_path_forecasts_qoq=file_path_forecasts_components_qoq, 
+                        file_path_forecasts_yoy=file_path_forecasts_components_yoy, 
+                        component_name: str = ""):
 
     # Only created for AR models; keep defined for other branches.
     AR_summary = None
@@ -1226,52 +1131,91 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
                 ## Start Execution in the inner loop
                 print(f""" Calculating an {model}{AR_order} model on the last {AR_horizon} quarters, predicting present and forecasting {forecast_horizon-1} quarters into the future ... \n""")
 
-                ## Get the models
-                #Create the summary statistic df
-                AR_summary = pd.DataFrame()
-                AR_summary.index.name = 'prediction_date'
 
+                # --------------------------------------------
+                # Outer loop: refit with larger AR_order if forecasts diverge
+                # --------------------------------------------
+                max_order_cap = 175
+                step = 10
 
-                # Iterate over all quarterly datapoints 
-                forecast_cols = {}
-                index_dfs = []
-                summary_rows = []
+                while True:
+                    # Create the summary statistic df
+                    AR_summary = pd.DataFrame()
+                    AR_summary.index.name = "prediction_date"
 
-                # Iterate over all quarterly datapoints 
-                for col in df_qoq.columns:
+                    forecast_cols = {}
+                    index_dfs = []
+                    summary_rows = []
 
-                    # Select memory window
-                    data, data_index = select_col(df_qoq, col, AR_horizon)
+                    # Track whether any forecast violates the divergence threshold in this run
+                    rerun_with_higher_order = False
 
+                    # Iterate over all quarterly datapoints
+                    for col in df_qoq.columns:
 
-                    # Need strictly positive residual dof for AutoReg with constant:
-                    # Require minimum of 20 observations for reliable AR model estimation
-                    min_n = settings.min_AR_observations                    
-                    if len(data) < min_n:
-                        forecast_cols[col] = pd.Series([pd.NA] * forecast_horizon)
-                        index_dfs.append(index_dict(col, data_index, [pd.NA] * forecast_horizon, pd.DataFrame(), forecast_horizon))
+                        # Select memory window
+                        data, data_index = select_col(df_qoq, col, AR_horizon)
+
+                        # Need enough observations for current AR_order and a constant term.
+                        # For AutoReg with trend='c': residual dof > 0 requires n > 2*lags + 1.
+                        required_obs_for_order = max(settings.min_AR_observations, 2 * AR_order + 2)
+                        if len(data) < required_obs_for_order:
+                            forecast_cols[col] = pd.Series([np.nan] * forecast_horizon, dtype=float)
+                            index_dfs.append(
+                                index_dict(
+                                    col, data_index, [np.nan] * forecast_horizon, pd.DataFrame(), forecast_horizon
+                                )
+                            )
+                            continue
+
+                        # Fit the model
+                        forecaster = AutoReg(data, lags=AR_order, old_names=False)
+                        results = forecaster.fit()
+
+                        # Collect model diagnostics
+                        col_results = AR_diagnostics(col, results, AR_order)
+                        summary_rows.append(col_results)
+
+                        # Generate predictions
+                        forecast_qoq = results.predict(
+                            start=len(data), end=len(data) + forecast_horizon - 1
+                        )
+                        forecast_cols[col] = pd.Series(forecast_qoq)
+
+                        # Collect indexed forecast DataFrames
+                        index_dfs.append(index_dict(col, data_index, forecast_qoq, pd.DataFrame(), forecast_horizon))
+
+                        # Check divergence condition (ignore NAs)
+                        if pd.Series(forecast_qoq).dropna().gt(settings.AR_divergence_max).any():
+                            rerun_with_higher_order = True
+                            break  # stop early; we will refit everything with higher AR_order
+
+                    # Decide whether to rerun
+                    if rerun_with_higher_order:
+                        AR_order += step
+                        if AR_order > max_order_cap:
+                            # Stop trying to increase; keep the last computed run (may be incomplete if we broke early)
+                            # If you prefer to ensure a full last run at the cap, set AR_order=max_order_cap and continue once.
+                            break
                         continue
 
-                    # Fit the model
-                    forecaster = AutoReg(data, lags=AR_order, old_names=False)
-                    results = forecaster.fit()
+                    # No divergence: accept this run
+                    break
 
+                # At this point you have: forecast_cols, index_dfs, summary_rows for the accepted AR_order
 
-                    # Collect model diagnostics
-                    col_results = AR_diagnostics(col, results, AR_order)
-                    summary_rows.append(col_results)
-
-                    # Generate predictions
-                    forecast_qoq = results.predict(start=len(data), end=len(data) + forecast_horizon - 1)
-                    forecast_cols[col] = pd.Series(forecast_qoq)
-
-
-                    # Collect indexed forecast DataFrames
-                    index_dfs.append(index_dict(col, data_index, forecast_qoq, pd.DataFrame(), forecast_horizon))
 
                 # Combine diagnostics and forecasts
-                AR_summary = pd.concat([r.to_frame().T for r in summary_rows], ignore_index=True)
-                qoq_forecast_df = pd.concat(forecast_cols, axis=1)
+                AR_summary = (
+                    pd.concat([r.to_frame().T for r in summary_rows], ignore_index=True)
+                    if summary_rows
+                    else pd.DataFrame()
+                )
+                qoq_forecast_df = (
+                    pd.concat(forecast_cols, axis=1)
+                    if forecast_cols
+                    else pd.DataFrame(index=range(forecast_horizon))
+                )
                 # Filter out empty DataFrames and drop all-NA columns before concatenation
                 index_dfs_filtered = [df.dropna(axis=1, how='all') for df in index_dfs if not df.empty]
                 index_dfs_filtered = [df for df in index_dfs_filtered if not df.empty]
@@ -1282,10 +1226,9 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
                 ## Process and Save results
                 process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, model=model, average_horizon=None, AR_horizon=AR_horizon, AR_order=AR_order,
                                          file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
-                                         file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
-                                         file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2, 
+                                         file_path_forecasts_qoq=file_path_forecasts_qoq, 
+                                         file_path_forecasts_yoy=file_path_forecasts_yoy, 
                                          AR_summary=AR_summary,
-                                         gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1342,10 +1285,9 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
                 ## Process and Save results
                 process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, model=model, average_horizon=average_horizon, AR_horizon=None, AR_order=None,
                                          file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy,
-                                         file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
-                                         file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+                                         file_path_forecasts_qoq=file_path_forecasts_qoq, 
+                                         file_path_forecasts_yoy=file_path_forecasts_yoy,
                                          AR_summary=None,
-                                         gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1388,10 +1330,9 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
                 ## Process and Save results
                 process_and_save_results(df_qoq, qoq_forecast_df, qoq_forecast_index_df, model=model, average_horizon=average_horizon, AR_horizon=None, AR_order=None,
                                          file_path_dt_qoq=file_path_dt_qoq, file_path_dt_yoy=file_path_dt_yoy, 
-                                         file_path_forecasts_qoq=file_path_forecasts_qoq, file_path_forecasts_qoq_2=file_path_forecasts_qoq_2,
-                                         file_path_forecasts_yoy=file_path_forecasts_yoy, file_path_forecasts_yoy_2=file_path_forecasts_yoy_2,
+                                         file_path_forecasts_qoq=file_path_forecasts_qoq, 
+                                         file_path_forecasts_yoy=file_path_forecasts_yoy, 
                                          AR_summary=None,
-                                         gdp_mode=gdp_mode,
                                          component_name=component_name)
 
 
@@ -1419,44 +1360,43 @@ def naive_forecasting(df_qoq, models=models, AR_orders=AR_orders, AR_horizons=AR
 #                                     NAIVE GDP FORECASTING                                        #
 # =================================================================================================#
 
-naive_forecasting(df_qoq_gdp)
+#naive_forecasting(df_qoq_gdp)
 
 
 # =================================================================================================#
 #                                  NAIVE COMPONENT FORECASTING                                     #
 # =================================================================================================#
 
-if settings.evaluate_forecast_components:
-
-    for component_name, df_component in qoq_dfs_components.items():
-
-        # Skip if not in included components list
-        if component_name not in settings.included_components:
-            print(f"Skipping naive {component_name} forecast, as it is not in the specified settings.included_components list.")
-            continue
 
 
-        # Print
-        print(f"""\nStarting Naive Forecasting for {component_name} ... \n""")
+for component_name, df_component in qoq_dfs_components.items():
 
-        # Add a substring
-        component_name = component_name + "_"
+    # Skip if not in included components list
+    if component_name not in settings.included_components:
+        print(f"Skipping naive {component_name} forecast, as it is not in the specified settings.included_components list.")
+        continue
 
-        # Run the naive forecasting function
-        naive_forecasting(
-            df_component,
-            models=models,
-            AR_orders=AR_orders,
-            AR_horizons=AR_horizons,
-            average_horizons=settings.average_horizons,
-            forecast_horizon=forecast_horizon,
-            file_path_dt_qoq=file_path_dt_components_qoq,
-            file_path_dt_yoy=file_path_dt_components_yoy,
-            file_path_forecasts_qoq=file_path_forecasts_components_qoq, 
-            file_path_forecasts_yoy=file_path_forecasts_components_yoy, 
-            gdp_mode=False,
-            component_name=component_name
-        )
+
+    # Print
+    print(f"""\nStarting Naive Forecasting for {component_name} ... \n""")
+
+    # Add a substring
+    component_name = component_name + "_"
+
+    # Run the naive forecasting function
+    naive_forecasting(
+        df_component,
+        models=models,
+        AR_orders=AR_orders,
+        AR_horizons=AR_horizons,
+        average_horizons=settings.average_horizons,
+        forecast_horizon=forecast_horizon,
+        file_path_dt_qoq=file_path_dt_components_qoq,
+        file_path_dt_yoy=file_path_dt_components_yoy,
+        file_path_forecasts_qoq=file_path_forecasts_components_qoq, 
+        file_path_forecasts_yoy=file_path_forecasts_components_yoy, 
+        component_name=component_name
+    )
 
 
 

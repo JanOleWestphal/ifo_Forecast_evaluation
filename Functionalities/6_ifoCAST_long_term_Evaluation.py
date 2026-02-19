@@ -128,14 +128,12 @@ first_release_upper_limit_quarter = settings.first_release_upper_limit_quarter
 # ==================================================================================================
 
 ## Result Folder Paths
-table_folder = os.path.join(wd, '1_Result_Tables')
-graph_folder = os.path.join(wd, '2_Result_Graphs')
-
+table_folder = os.path.join(wd, '3_ifoCAST_eval', 'Tables')
+graph_folder = os.path.join(wd, '3_ifoCAST_eval', 'Graphs')
 
 ## Create if needed
 for folder in [table_folder, graph_folder]:
     os.makedirs(folder, exist_ok=True)
-
 
 
 
@@ -289,7 +287,7 @@ ifo_qoq_forecasts = align_df_to_mid_quarters(ifo_qoq_forecasts)  # Align to mid-
 file_path_naive_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_QoQ_Forecast_Tables')
 
 # Load all QoQ naive forecast Excel files into dictionary
-naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naive_qoq_forecasts_')
+naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naive_qoq_forecasts_', filter='GDP')
 #show(naive_qoq_dfs_dict)
 
 """
@@ -308,7 +306,7 @@ def load_excels_to_dict(folder_path):
 # Load Evaluation Data
 # --------------------------------------------------------------------------------------------------
 
-eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
+eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_evaluation_series')
 
 ## First Releases
 qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
@@ -515,13 +513,13 @@ def qoq_error_evaluation_pipeline(eval_df_1, eval_dict,
     # Error Series
     ifo_qoq_error_path = os.path.join(wd, '0_1_Output_Data', f'6_ifo_qoq_error_series_ifoCASTset{naive_str}{full_str}')
     # Error Tables
-    ifo_qoq_table_path = os.path.join(table_folder, f'6_ifo{CAST}_qoq_evaluations_ifoCASTset{naive_str}{full_str}')
+    ifo_qoq_table_path = os.path.join(table_folder, f'6_ifo{CAST}_qoq_eval_ifoCASTset{naive_str}{full_str}')
 
     ## Naive
     # Error Series
-    naive_qoq_error_path = os.path.join(wd, '0_1_Output_Data', f'6_naive_forecaster_qoq_error_series_ifoCASTset{naive_str}{full_str}')
+    naive_qoq_error_path = os.path.join(wd, '0_1_Output_Data', f'6_naive_qoq_error_series_ifoCASTset{naive_str}{full_str}')
     # Error table
-    naive_qoq_table_path = os.path.join(table_folder, f'6_naive_forecaster_qoq_evaluations_ifoCASTset{naive_str}{full_str}')
+    naive_qoq_table_path = os.path.join(table_folder, f'6_naive_qoq_eval_ifoCASTset{naive_str}{full_str}')
 
 
     ## Create if needed
@@ -653,7 +651,7 @@ def qoq_error_evaluation_pipeline(eval_df_1, eval_dict,
     ## Get Table
     ifo_qoq_error_table_latest = get_qoq_error_statistics_table(ifo_qoq_errors_latest,
                                                                 'latest_eval', ifo_qoq_table_path, 
-                                                            f'ifo{CAST}_qoq_forecast_error_table_latest_eval_ifoCASTset{naive_str}{full_str}.xlsx')
+                                                            f'ifo{CAST}_qoq_error_table_latest_eval_ifoCASTset{naive_str}{full_str}.xlsx')
 
 
 
@@ -707,7 +705,7 @@ def qoq_error_evaluation_pipeline(eval_df_1, eval_dict,
         naive_qoq_first_eval_error_tables_dict[name] = get_qoq_error_statistics_table(
                                                             naive_qoq_first_eval_error_series_dict[name],
                                                             'first_eval', naive_qoq_table_path, 
-                                                        f'{name}_qoq_forecast_error_table_first_eval_ifoCASTset{naive_str}{full_str}.xlsx')
+                                                        f'{name}_qoq_error_table_first_eval_ifoCASTset{naive_str}{full_str}.xlsx')
     
     #show(next(iter(naive_qoq_first_eval_error_tables_dict.values())))
 
@@ -728,7 +726,7 @@ def qoq_error_evaluation_pipeline(eval_df_1, eval_dict,
         naive_qoq_latest_eval_error_tables_dict[name] = get_qoq_error_statistics_table(
                                                             naive_qoq_latest_eval_error_series_dict[name],
                                                         'latest_eval', naive_qoq_table_path, 
-                                                        f'{name}_qoq_forecast_error_table_latest_eval_ifoCASTset{naive_str}{full_str}.xlsx')
+                                                        f'{name}_qoq_error_table_latest_eval_ifoCASTset{naive_str}{full_str}.xlsx')
 
 
 

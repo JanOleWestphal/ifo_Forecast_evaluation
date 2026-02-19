@@ -129,10 +129,8 @@ first_release_upper_limit_quarter = settings.first_release_upper_limit_quarter
 # ==================================================================================================
 
 ## Result Folder Paths
-table_folder = os.path.join(wd, '1_Result_Tables')
-graph_folder = os.path.join(wd, '2_Result_Graphs')
-
-
+table_folder = os.path.join(wd, '3_ifoCAST_eval', 'Tables')
+graph_folder = os.path.join(wd, '3_ifoCAST_eval', 'Graphs')
 
 ## Create if needed
 for folder in [table_folder, graph_folder]:
@@ -221,7 +219,7 @@ ifo_forecast_dates.loc[ifo_forecast_dates['forecast_date'] > threshold_date, 'fo
 file_path_naive_qoq = os.path.join(wd, '0_0_Data', '3_Naive_Forecaster_Data', '1_QoQ_Forecast_Tables')
 
 # Load all QoQ naive forecast Excel files into dictionary
-naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naive_qoq_forecasts_')
+naive_qoq_dfs_dict = load_excels_to_dict(file_path_naive_qoq, strip_string='naive_qoq_forecasts_', filter='GDP')
 #show(naive_qoq_dfs_dict)
 
 """
@@ -615,8 +613,8 @@ ifoCAST_nowcast_series.to_excel(os.path.join(wd, '0_0_Data', '0_Forecast_Inputs'
 # --------------------------------------------------------------------------------------------------
 
 # Set paths
-eval_path_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
-eval_path_gva = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GVA_Evaluation_series')
+eval_path_gdp = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_evaluation_series')
+eval_path_gva = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_evaluation_series')
 
 # Create dictionaries to hold the evaluation data for GDP and GVA
 qoq_first_eval_dict = {}
@@ -1013,7 +1011,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     naive_qoq_matched_error_path = os.path.join(wd, '0_1_Output_Data', f'5_naive_qoq_error_series{gva_string}_matched_to_ifoCAST{subset_str}')
     os.makedirs(naive_qoq_matched_error_path, exist_ok=True)
 
-    naive_qoq_matched_table_path = os.path.join(table_folder, f'4_naive_QoQ{gva_string}_matched_to_ifoCAST{subset_str}')
+    naive_qoq_matched_table_path = os.path.join(table_folder, f'1_naive_QoQ{gva_string}_matched_to_ifoCAST{subset_str}')
     os.makedirs(naive_qoq_matched_table_path, exist_ok=True)
 
 
@@ -1070,7 +1068,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     os.makedirs(ifo_qoq_matched_error_path, exist_ok=True)
 
     # Error Tables
-    ifo_qoq_matched_table_path = os.path.join(table_folder, f'4_ifo_QoQ{gva_string}_matched_to_ifoCAST{subset_str}')
+    ifo_qoq_matched_table_path = os.path.join(table_folder, f'1_ifo_QoQ{gva_string}_matched_to_ifoCAST{subset_str}')
     os.makedirs(ifo_qoq_matched_table_path, exist_ok=True)
 
     ## Clear
@@ -1142,7 +1140,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     ifoCast_filtered_error_path = os.path.join(wd, '0_1_Output_Data', f'5_ifoCAST_error_series{gva_string}_matched{subset_str}')
     os.makedirs(ifoCast_filtered_error_path, exist_ok=True)
 
-    ifoCAST_filtered_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations{gva_string}_matched{subset_str}')
+    ifoCAST_filtered_table_path = os.path.join(table_folder, f'1_ifoCAST_rel_date_matched{gva_string}_{subset_str}')
     os.makedirs(ifoCAST_filtered_table_path, exist_ok=True)
 
     ## Clear
@@ -1210,7 +1208,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     os.makedirs(ifoCast_full_error_path, exist_ok=True)
 
     # Error Tables
-    ifoCAST_full_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations{gva_string}_full{subset_str}')
+    ifoCAST_full_table_path = os.path.join(table_folder, f'2_ifoCAST_evaluations{gva_string}_full{subset_str}')
     os.makedirs(ifoCAST_full_table_path, exist_ok=True)
 
 
@@ -1278,7 +1276,7 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     os.makedirs(ifoCast_last_rep_error_path, exist_ok=True)
 
     # Error Tables
-    ifoCAST_last_rep_table_path = os.path.join(table_folder, f'4_ifoCAST_evaluations{gva_string}_last_rep{subset_str}')
+    ifoCAST_last_rep_table_path = os.path.join(table_folder, f'3_ifoCAST_evaluations{gva_string}_last_rep{subset_str}')
     os.makedirs(ifoCAST_last_rep_table_path, exist_ok=True)
 
     ## Clear
@@ -1361,9 +1359,9 @@ def ifocast_eval_pipeline(ifocast_df_filtered= ifoCAst_Qm1_Q0_Q1_filtered,
     ## Parent Folders
 
     # Scatter, Barplot and Series
-    ifoCAST_scatter_path = os.path.join(graph_folder, '2_ifoCAST_Error_Scatter')
-    ifoCAST_barplot_path = os.path.join(graph_folder, '2_ifoCAST_Error_Bars')
-    ifoCAST_series_path = os.path.join(graph_folder, '2_ifoCAST_Error_Series')
+    ifoCAST_scatter_path = os.path.join(graph_folder, '1_ifoCAST_Error_Scatter')
+    ifoCAST_barplot_path = os.path.join(graph_folder, '1_ifoCAST_Error_Bars')
+    ifoCAST_series_path = os.path.join(graph_folder, '1_ifoCAST_Error_Series')
 
     # Store in Dict
     ifoCAST_graph_folders = {

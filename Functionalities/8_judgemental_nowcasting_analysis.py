@@ -247,7 +247,7 @@ def setup_component_folder(component_name):
 # -------------------------------------------------------------------------------------------------#
 # Load realized GDP-series
 # -------------------------------------------------------------------------------------------------#
-eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_GDP_Evaluation_series')
+eval_path = os.path.join(wd, '0_0_Data', '2_Processed_Data', '2_evaluation_series')
 qoq_path_first = os.path.join(eval_path, 'first_release_qoq_GDP.xlsx')
 
 ## First Releases
